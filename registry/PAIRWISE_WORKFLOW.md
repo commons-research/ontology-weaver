@@ -8,13 +8,16 @@ Curate mappings from source ontology terms to canonical ontology terms, then exp
 - `registry/reconciled_canonical_groups.tsv` (canonical with associated source terms)
 - `registry/alignment_curation.sqlite` (SQLite source of truth)
 
-## 0) Download EMI ontology
+## 0) Download external ontology/vocabulary sources
 
 ```bash
-mkdir -p registry/downloads registry/imports
-curl -L --fail \
-  https://raw.githubusercontent.com/earth-metabolome-initiative/earth_metabolome_ontology/refs/heads/main/docs/ontology.ttl \
-  -o registry/downloads/emi.ttl
+scripts/download_external_sources.py --source-id emi
+```
+
+Or download all enabled sources defined in `registry/external_sources.tsv`:
+
+```bash
+scripts/download_external_sources.py --all
 ```
 
 ## 1) Extract EMI terms from TTL
