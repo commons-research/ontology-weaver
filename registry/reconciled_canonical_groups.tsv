@@ -1,0 +1,5 @@
+canonical_term_iri	canonical_term_label	canonical_term_source	mapped_term_count	mapped_terms	alignment_ids
+http://purl.obolibrary.org/obo/MS_1001456	analysis software	ms	1	EMI:https://w3id.org/emi#Analysis:Analysis	ALIGN_0002
+http://purl.obolibrary.org/obo/NCIT_C25414	Aliquot	ncit	2	EMI:https://w3id.org/emi#Aliquot:Aliquot | chmo:http://purl.obolibrary.org/obo/CHMO_0001786:RapidFire(R) mass spectrometry	ALIGN_0001
+http://purl.obolibrary.org/obo/UBERON_0001062	anatomical entity	obi	1	EMI:https://w3id.org/emi#AnatomicalEntity:Anatomical entity	ALIGN_0003
+https://w3id.org/emi#BioAssayResults	Bioassay result	EMI	1	edam:http://edamontology.org/format_3157:EBI Application Result XML	ALIGN_0004
