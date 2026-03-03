@@ -33,7 +33,19 @@ KEEP_TYPES = {
     "http://www.w3.org/2002/07/owl#DatatypeProperty",
     "http://www.w3.org/2002/07/owl#AnnotationProperty",
     "http://www.w3.org/2004/02/skos/core#Concept",
+    "http://www.w3.org/2002/07/owl#NamedIndividual",
 }
+TYPE_KIND_MAP = {
+    "http://www.w3.org/2002/07/owl#Class": "class",
+    "http://www.w3.org/2000/01/rdf-schema#Class": "class",
+    "http://www.w3.org/2004/02/skos/core#Concept": "class",
+    "http://www.w3.org/1999/02/22-rdf-syntax-ns#Property": "property",
+    "http://www.w3.org/2002/07/owl#ObjectProperty": "property",
+    "http://www.w3.org/2002/07/owl#DatatypeProperty": "property",
+    "http://www.w3.org/2002/07/owl#AnnotationProperty": "property",
+    "http://www.w3.org/2002/07/owl#NamedIndividual": "individual",
+}
+KIND_PRIORITY = {"class": 0, "property": 1, "individual": 2}
 
 TRIPLE_RE = re.compile(r"^<([^>]*)> <([^>]*)> (.*) \.$")
 IRI_OBJECT_RE = re.compile(r"^<([^>]*)>$")
@@ -107,12 +119,24 @@ def infer_label_from_iri(iri: str) -> str:
     return iri
 
 
+def pick_term_kind(type_iris: set[str]) -> tuple[str, str]:
+    """Pick one canonical (type_iri, kind) pair from known rdf:type IRIs."""
+    if not type_iris:
+        return "", ""
+    ranked = sorted(
+        type_iris,
+        key=lambda t: (KIND_PRIORITY.get(TYPE_KIND_MAP.get(t, ""), 99), t),
+    )
+    chosen = ranked[0]
+    return chosen, TYPE_KIND_MAP.get(chosen, "")
+
+
 def extract_terms(
     nt_path: Path, namespace_prefix: str
-) -> list[tuple[str, str, str, str, str, str, str, str, str]]:
+) -> list[tuple[str, str, str, str, str, str, str, str, str, str]]:
     """Extract sorted term rows from N-Triples with curation context fields."""
     labels: dict[str, str] = {}
-    types: dict[str, str] = {}
+    types: dict[str, set[str]] = {}
     comments: dict[str, list[str]] = {}
     definitions: dict[str, list[str]] = {}
     examples: dict[str, list[str]] = {}
@@ -164,16 +188,20 @@ def extract_terms(
             elif predicate == TYPE_PREDICATE:
                 type_match = IRI_OBJECT_RE.match(obj)
                 if type_match and type_match.group(1) in KEEP_TYPES:
-                    types[subject] = type_match.group(1)
+                    if subject not in types:
+                        types[subject] = set()
+                    types[subject].add(type_match.group(1))
 
-    rows: list[tuple[str, str, str, str, str, str, str, str, str]] = []
-    for iri, term_type in types.items():
+    rows: list[tuple[str, str, str, str, str, str, str, str, str, str]] = []
+    for iri, type_iris in types.items():
+        term_type, term_kind = pick_term_kind(type_iris)
         label = labels.get(iri, "") or infer_label_from_iri(iri)
         rows.append(
             (
                 iri,
                 label,
                 term_type,
+                term_kind,
                 " | ".join(definitions.get(iri, [])),
                 " | ".join(comments.get(iri, [])),
                 " | ".join(examples.get(iri, [])),
@@ -187,7 +215,7 @@ def extract_terms(
 
 
 def write_tsv(
-    path: Path, rows: list[tuple[str, str, str, str, str, str, str, str, str]]
+    path: Path, rows: list[tuple[str, str, str, str, str, str, str, str, str, str]]
 ) -> None:
     """Write extracted term rows to TSV output."""
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -198,6 +226,7 @@ def write_tsv(
                 "iri",
                 "label",
                 "type",
+                "term_kind",
                 "definition",
                 "comment",
                 "example",

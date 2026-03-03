@@ -1,3 +1,4 @@
-source_id	url	download_path	enabled	description
-emi	https://raw.githubusercontent.com/earth-metabolome-initiative/earth_metabolome_ontology/refs/heads/main/docs/ontology.ttl	registry/downloads/emi.ttl	1	Earth Metabolome Initiative ontology (TTL)
-enpkg	https://raw.githubusercontent.com/enpkg/enpkg_full/a6535a5dfda9f4c59c79f39401359cb14c521a86/06_enpkg_graph_builder/data/schema/enpkg_schema.ttl	registry/downloads/enpkg.ttl	1	ENPKG Schema
+source_id	url	enabled	description
+emi	https://raw.githubusercontent.com/earth-metabolome-initiative/earth_metabolome_ontology/refs/heads/main/docs/ontology.ttl	1	Earth Metabolome Initiative ontology (TTL)
+enpkg	https://raw.githubusercontent.com/enpkg/enpkg_full/a6535a5dfda9f4c59c79f39401359cb14c521a86/06_enpkg_graph_builder/data/schema/enpkg_schema.ttl	1	ENPKG Schema
+test	https://raw.githubusercontent.com/enpkg/enpkg_full/a6535a5dfda9f4c59c79f39401359cb14c521a86/06_enpkg_graph_builder/data/schema/enpkg_schema.ttl	1	A test ontology

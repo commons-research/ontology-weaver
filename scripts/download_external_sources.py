@@ -17,6 +17,7 @@ from pathlib import Path
 
 
 DEFAULT_MANIFEST = Path("registry/external_sources.tsv")
+DEFAULT_DOWNLOADS_DIR = Path("registry/downloads")
 DOWNLOAD_CHUNK_SIZE = 1024 * 1024
 
 
@@ -95,7 +96,7 @@ def load_manifest(path: Path) -> list[SourceEntry]:
 
     with path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
-        required = {"source_id", "url", "download_path"}
+        required = {"source_id", "url"}
         missing = required - set(reader.fieldnames or [])
         if missing:
             raise SystemExit(
@@ -107,30 +108,27 @@ def load_manifest(path: Path) -> list[SourceEntry]:
         for row_num, row in enumerate(reader, start=2):
             source_id = (row.get("source_id", "") or "").strip()
             url = (row.get("url", "") or "").strip()
-            download_path_raw = (row.get("download_path", "") or "").strip()
             enabled = parse_bool((row.get("enabled", "") or "").strip() or "1")
             description = (row.get("description", "") or "").strip()
+            normalized_source_id = source_id.lower()
 
             if not source_id:
                 raise SystemExit(f"Manifest row {row_num}: source_id is required")
-            if source_id in seen_ids:
+            if normalized_source_id in seen_ids:
                 raise SystemExit(f"Manifest row {row_num}: duplicate source_id '{source_id}'")
             if not url:
                 raise SystemExit(f"Manifest row {row_num}: url is required")
-            if not download_path_raw:
-                raise SystemExit(f"Manifest row {row_num}: download_path is required")
-
-            download_path = Path(download_path_raw)
-            if download_path.is_absolute():
+            if any(char.isspace() for char in normalized_source_id):
                 raise SystemExit(
-                    f"Manifest row {row_num}: download_path must be relative, "
-                    f"got '{download_path_raw}'"
+                    f"Manifest row {row_num}: source_id must not contain whitespace "
+                    f"(got '{source_id}')"
                 )
+            download_path = DEFAULT_DOWNLOADS_DIR / f"{normalized_source_id}.ttl"
 
-            seen_ids.add(source_id)
+            seen_ids.add(normalized_source_id)
             entries.append(
                 SourceEntry(
-                    source_id=source_id,
+                    source_id=normalized_source_id,
                     url=url,
                     download_path=download_path,
                     enabled=enabled,
@@ -160,7 +158,7 @@ def pick_entries(
         unique_ids: list[str] = []
         seen: set[str] = set()
         for source_id in source_ids:
-            clean_id = source_id.strip()
+            clean_id = source_id.strip().lower()
             if not clean_id or clean_id in seen:
                 continue
             seen.add(clean_id)

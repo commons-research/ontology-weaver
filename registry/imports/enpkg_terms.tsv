@@ -1,37 +1,37 @@
-iri	label	type
-https://enpkg.commons-lab.org/kg/Annotation	Spectrum annotation	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/BioAssayResults	A bioassay result	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/ChemicalEntity	A chemical entity (chemical structure or class)	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/ChemicalTaxonomy	A chemical taxonmy (chemical class)	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/GNPSAnnotation	GNPS structural annotation	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/InChIkey	InChIKey	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/InChIkey2D	2D InChIKey	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/IsdbAnnotation	ISDB structural annotation	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/LCMSAnalysis	LCMS analysis	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/LCMSAnalysisNeg	Neg LCMS analysis	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/LCMSAnalysisPos	Pos LCMS analysis	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/LCMSFeature	LCMS individual MS2 spectrum	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/LCMSFeatureList	Feature list	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/LFpair	pair of LCMSFeature	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/LabBlank	A LabBlank	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/LabExtract	A LabExtract	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/LabObject	A LabObject	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/LabQc	A LabQc	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/MS2Spectrum	MS2 spectrum	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/NPCClass	NPCClass	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/NPCPathway	NPCPathway	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/NPCSuperclass	NPCSuperclass	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/RawMaterial	A RawMaterial	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/SiriusCanopusAnnotation	CANOPUS chemical class annotation	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/SiriusStructureAnnotation	SIRIUS structural annotation	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/Spec2VecDoc	A Spec2VecDoc	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/Spec2VecLoss	A Spec2VecLoss	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/Spec2VecPeak	A Spec2VecPeak	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/SpectralPair	pair of MS2Spectra	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/WDChemical	Cross-reference to a chemical entity in Wikidata	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/WDTaxon	Cross-reference to a taxon in Wikidata	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/XRef	Any cross-reference	http://www.w3.org/2000/01/rdf-schema#Class
-https://enpkg.commons-lab.org/kg/has_member	member of a specral pair	http://www.w3.org/1999/02/22-rdf-syntax-ns#Property
-https://enpkg.commons-lab.org/kg/has_member_1	member 1 of a spectral pair	http://www.w3.org/1999/02/22-rdf-syntax-ns#Property
-https://enpkg.commons-lab.org/kg/has_member_2	member 2 of a spectral pair	http://www.w3.org/1999/02/22-rdf-syntax-ns#Property
-https://enpkg.commons-lab.org/kg/spec2vec	A spec2vec-related object	http://www.w3.org/2000/01/rdf-schema#Class
+iri	label	type	definition	comment	example	domain_iris	range_iris	parent_iris
+https://enpkg.commons-lab.org/kg/Annotation	Spectrum annotation	http://www.w3.org/2000/01/rdf-schema#Class		A spectral annotation				
+https://enpkg.commons-lab.org/kg/BioAssayResults	A bioassay result	http://www.w3.org/2000/01/rdf-schema#Class		An object to store bioactivity results				
+https://enpkg.commons-lab.org/kg/ChemicalEntity	A chemical entity (chemical structure or class)	http://www.w3.org/2000/01/rdf-schema#Class						
+https://enpkg.commons-lab.org/kg/ChemicalTaxonomy	A chemical taxonmy (chemical class)	http://www.w3.org/2000/01/rdf-schema#Class						
+https://enpkg.commons-lab.org/kg/GNPSAnnotation	GNPS structural annotation	http://www.w3.org/2000/01/rdf-schema#Class		A spectrum structural annotation by GNPS				https://enpkg.commons-lab.org/kg/Annotation
+https://enpkg.commons-lab.org/kg/InChIkey	InChIKey	http://www.w3.org/2000/01/rdf-schema#Class		A chemical structure represented by its InChIKey				https://enpkg.commons-lab.org/kg/ChemicalEntity
+https://enpkg.commons-lab.org/kg/InChIkey2D	2D InChIKey	http://www.w3.org/2000/01/rdf-schema#Class		The first 14 characters of an InChIKey, often returned by MS-based annotation tools				
+https://enpkg.commons-lab.org/kg/IsdbAnnotation	ISDB structural annotation	http://www.w3.org/2000/01/rdf-schema#Class		A spectrum structural annotation by comparison with an in-silico spectral DB, coupled to chemical and taxonomical reweighting				https://enpkg.commons-lab.org/kg/Annotation
+https://enpkg.commons-lab.org/kg/LCMSAnalysis	LCMS analysis	http://www.w3.org/2000/01/rdf-schema#Class		An LCMS analysis in a given ionization mode (pos or neg)				
+https://enpkg.commons-lab.org/kg/LCMSAnalysisNeg	Neg LCMS analysis	http://www.w3.org/2000/01/rdf-schema#Class		An LCMS analysis in negative ionization mode (pos or neg)				https://enpkg.commons-lab.org/kg/LCMSAnalysis
+https://enpkg.commons-lab.org/kg/LCMSAnalysisPos	Pos LCMS analysis	http://www.w3.org/2000/01/rdf-schema#Class		An LCMS analysis in positive ionization mode (pos or neg)				https://enpkg.commons-lab.org/kg/LCMSAnalysis
+https://enpkg.commons-lab.org/kg/LCMSFeature	LCMS individual MS2 spectrum	http://www.w3.org/2000/01/rdf-schema#Class		An LCMS feature from a processed LCMS analysis				https://enpkg.commons-lab.org/kg/MS2Spectrum
+https://enpkg.commons-lab.org/kg/LCMSFeatureList	Feature list	http://www.w3.org/2000/01/rdf-schema#Class		A list of LCMS features obtained from the processing of a given LCMS analysis				
+https://enpkg.commons-lab.org/kg/LFpair	pair of LCMSFeature	http://www.w3.org/2000/01/rdf-schema#Class		A pair of 2 LCMSFeature				https://enpkg.commons-lab.org/kg/SpectralPair
+https://enpkg.commons-lab.org/kg/LabBlank	A LabBlank	http://www.w3.org/2000/01/rdf-schema#Class		A blank sample				https://enpkg.commons-lab.org/kg/LabObject
+https://enpkg.commons-lab.org/kg/LabExtract	A LabExtract	http://www.w3.org/2000/01/rdf-schema#Class		A natural extract obtained from the processing of a RawMaterial				https://enpkg.commons-lab.org/kg/LabObject
+https://enpkg.commons-lab.org/kg/LabObject	A LabObject	http://www.w3.org/2000/01/rdf-schema#Class		An object that correspond to a physical laboratory object				
+https://enpkg.commons-lab.org/kg/LabQc	A LabQc	http://www.w3.org/2000/01/rdf-schema#Class		A quality control (QC) sample				https://enpkg.commons-lab.org/kg/LabObject
+https://enpkg.commons-lab.org/kg/MS2Spectrum	MS2 spectrum	http://www.w3.org/2000/01/rdf-schema#Class		A fragmentation mass spectrometry (or MS2) spectrum				
+https://enpkg.commons-lab.org/kg/NPCClass	NPCClass	http://www.w3.org/2000/01/rdf-schema#Class		A NPClassifier (NPC) chemical class				https://enpkg.commons-lab.org/kg/ChemicalTaxonomy
+https://enpkg.commons-lab.org/kg/NPCPathway	NPCPathway	http://www.w3.org/2000/01/rdf-schema#Class		A NPClassifier (NPC) chemical pathway				https://enpkg.commons-lab.org/kg/ChemicalTaxonomy
+https://enpkg.commons-lab.org/kg/NPCSuperclass	NPCSuperclass	http://www.w3.org/2000/01/rdf-schema#Class		A NPClassifier (NPC) chemical superclass				https://enpkg.commons-lab.org/kg/ChemicalTaxonomy
+https://enpkg.commons-lab.org/kg/RawMaterial	A RawMaterial	http://www.w3.org/2000/01/rdf-schema#Class		A raw laboratory biological material, i.e. before extraction				https://enpkg.commons-lab.org/kg/LabObject
+https://enpkg.commons-lab.org/kg/SiriusCanopusAnnotation	CANOPUS chemical class annotation	http://www.w3.org/2000/01/rdf-schema#Class		A spectrum chemical class annotation by SIRIUS-CANOPUS				https://enpkg.commons-lab.org/kg/Annotation
+https://enpkg.commons-lab.org/kg/SiriusStructureAnnotation	SIRIUS structural annotation	http://www.w3.org/2000/01/rdf-schema#Class		A spectrum structural annotation by SIRIUS				https://enpkg.commons-lab.org/kg/Annotation
+https://enpkg.commons-lab.org/kg/Spec2VecDoc	A Spec2VecDoc	http://www.w3.org/2000/01/rdf-schema#Class		An ensemble of Spec2VecPeak and Spec2VecLoss objects that characterizes an MS2Spectrum				https://enpkg.commons-lab.org/kg/spec2vec
+https://enpkg.commons-lab.org/kg/Spec2VecLoss	A Spec2VecLoss	http://www.w3.org/2000/01/rdf-schema#Class		A Spec2VecLoss that partly characterizes an MS2Spectrum				https://enpkg.commons-lab.org/kg/spec2vec
+https://enpkg.commons-lab.org/kg/Spec2VecPeak	A Spec2VecPeak	http://www.w3.org/2000/01/rdf-schema#Class		A Spec2VecPeak that partly characterizes an MS2 spectrum				https://enpkg.commons-lab.org/kg/spec2vec
+https://enpkg.commons-lab.org/kg/SpectralPair	pair of MS2Spectra	http://www.w3.org/2000/01/rdf-schema#Class		A pair of 2 MS2Spectra				
+https://enpkg.commons-lab.org/kg/WDChemical	Cross-reference to a chemical entity in Wikidata	http://www.w3.org/2000/01/rdf-schema#Class		Cross-reference to a chemical entity in Wikidata				https://enpkg.commons-lab.org/kg/XRef
+https://enpkg.commons-lab.org/kg/WDTaxon	Cross-reference to a taxon in Wikidata	http://www.w3.org/2000/01/rdf-schema#Class		Cross-reference to a taxon in Wikidata				https://enpkg.commons-lab.org/kg/XRef
+https://enpkg.commons-lab.org/kg/XRef	Any cross-reference	http://www.w3.org/2000/01/rdf-schema#Class		Any cross-reference				
+https://enpkg.commons-lab.org/kg/has_member	member of a specral pair	http://www.w3.org/1999/02/22-rdf-syntax-ns#Property		LCMSFeature		https://enpkg.commons-lab.org/kg/SpectralPair	https://enpkg.commons-lab.org/kg/LCMSFeature | https://enpkg.commons-lab.org/kg/GNPSConsensusSpectrum	
+https://enpkg.commons-lab.org/kg/has_member_1	member 1 of a spectral pair	http://www.w3.org/1999/02/22-rdf-syntax-ns#Property		The first member of a spectral pair				
+https://enpkg.commons-lab.org/kg/has_member_2	member 2 of a spectral pair	http://www.w3.org/1999/02/22-rdf-syntax-ns#Property		The second member of a spectral pair				
+https://enpkg.commons-lab.org/kg/spec2vec	A spec2vec-related object	http://www.w3.org/2000/01/rdf-schema#Class		A spec2vec-related object				

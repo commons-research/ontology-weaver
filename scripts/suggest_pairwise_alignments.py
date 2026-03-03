@@ -28,6 +28,7 @@ from typing import Iterable
 
 OLS_API_SEARCH_URL = "https://www.ebi.ac.uk/ols4/api/search"
 DEFAULT_ONTOLOGIES = ["chebi", "obi", "ms", "chmo", "edam"]
+KIND_MISMATCH_SCORE_FACTOR = 0.75
 
 
 @dataclass(frozen=True)
@@ -37,6 +38,7 @@ class Term:
     iri: str
     label: str
     term_type: str
+    term_kind: str
     normalized_label: str
     token_set: frozenset[str]
     definition: str
@@ -52,6 +54,7 @@ class OlsSuggestion:
     label: str
     ontology: str
     ontology_label: str
+    entity_kind: str
     score: float
     definition: str
     comment: str
@@ -65,6 +68,7 @@ class PairSuggestion:
 
     left: Term
     right_source: str
+    right_term_kind: str
     right_term_iri: str
     right_label: str
     right_definition: str
@@ -96,6 +100,7 @@ class Config:
     ols_rows: int
     ols_fetch_metadata: bool
     request_timeout: float
+    top_n_ols: int
     max_left_terms: int
     curator: str
     include_existing_curated: bool
@@ -179,6 +184,12 @@ def parse_args() -> Config:
         help="Per-request timeout in seconds for OLS API calls (default: 3.0)",
     )
     parser.add_argument(
+        "--top-n-ols",
+        type=int,
+        default=1,
+        help="Number of top OLS hits to keep per left term in local-vs-OLS mode",
+    )
+    parser.add_argument(
         "--max-left-terms",
         type=int,
         default=0,
@@ -199,6 +210,8 @@ def parse_args() -> Config:
         raise SystemExit("--ols-rows must be > 0")
     if args.request_timeout <= 0:
         raise SystemExit("--request-timeout must be > 0")
+    if args.top_n_ols <= 0:
+        raise SystemExit("--top-n-ols must be > 0")
     if args.max_left_terms < 0:
         raise SystemExit("--max-left-terms must be >= 0")
 
@@ -223,6 +236,7 @@ def parse_args() -> Config:
         ols_rows=args.ols_rows,
         ols_fetch_metadata=bool(args.ols_fetch_metadata),
         request_timeout=args.request_timeout,
+        top_n_ols=args.top_n_ols,
         max_left_terms=args.max_left_terms,
         curator=args.curator.strip(),
         include_existing_curated=bool(args.include_existing_curated),
@@ -276,6 +290,35 @@ def tokenize(normalized_label: str) -> frozenset[str]:
     return frozenset(part for part in normalized_label.split() if part)
 
 
+def infer_term_kind_from_type(term_type: str) -> str:
+    value = (term_type or "").strip()
+    if not value:
+        return ""
+    if value.endswith("#Class") or value.endswith("/Class") or value.endswith("#Concept"):
+        return "class"
+    if "Property" in value or value.endswith("#Property") or value.endswith("/Property"):
+        return "property"
+    if value.endswith("#NamedIndividual") or value.endswith("/NamedIndividual"):
+        return "individual"
+    return ""
+
+
+def infer_ols_entity_kind(doc: dict[str, object]) -> str:
+    fields = [
+        str(doc.get("entity_type", "") or ""),
+        str(doc.get("type", "") or ""),
+        str(doc.get("semantic_type", "") or ""),
+    ]
+    text = " ".join(fields).lower()
+    if "property" in text:
+        return "property"
+    if "individual" in text:
+        return "individual"
+    if "class" in text or "concept" in text:
+        return "class"
+    return ""
+
+
 def load_terms(path: Path) -> list[Term]:
     """Load terms from TSV with columns iri,label,type."""
     if not path.is_file():
@@ -295,6 +338,10 @@ def load_terms(path: Path) -> list[Term]:
                     iri=iri,
                     label=raw_label,
                     term_type=(row.get("type", "") or "").strip(),
+                    term_kind=(
+                        (row.get("term_kind", "") or "").strip().lower()
+                        or infer_term_kind_from_type((row.get("type", "") or "").strip())
+                    ),
                     normalized_label=normalized,
                     token_set=tokenize(normalized),
                     definition=(row.get("definition", "") or "").strip(),
@@ -327,6 +374,15 @@ def local_match(left: Term, right: Term) -> tuple[str, float]:
     return method, score
 
 
+def apply_kind_penalty(score: float, left_kind: str, right_kind: str) -> float:
+    """Penalize score when both kinds are known and mismatch."""
+    lk = (left_kind or "").strip().lower()
+    rk = (right_kind or "").strip().lower()
+    if lk and rk and lk != rk:
+        return score * KIND_MISMATCH_SCORE_FACTOR
+    return score
+
+
 def relation_from_score(method: str, score: float) -> str:
     """Map lexical similarity to a default semantic relation."""
     if method == "exact_normalized" or score >= 0.99:
@@ -352,6 +408,7 @@ def build_local_local_candidates(
             if focus and focus not in right.normalized_label:
                 continue
             method, score = local_match(left, right)
+            score = apply_kind_penalty(score, left.term_kind, right.term_kind)
             if score >= min_score:
                 scored.append((left, right, method, score))
 
@@ -369,6 +426,7 @@ def build_local_local_candidates(
             PairSuggestion(
                 left=left,
                 right_source="",
+                right_term_kind=right.term_kind,
                 right_term_iri=right.iri,
                 right_label=right.label,
                 right_definition=(right.definition if hasattr(right, "definition") else ""),
@@ -392,6 +450,7 @@ def query_ols_suggestions(
     rows_per_ontology: int,
     request_timeout: float,
     fetch_metadata: bool,
+    metadata_limit: int = 1,
 ) -> list[OlsSuggestion]:
     """Query OLS API and return deduplicated best suggestions ranked by label similarity.
 
@@ -430,6 +489,7 @@ def query_ols_suggestions(
                 label=label,
                 ontology=onto_prefix,
                 ontology_label=onto_label,
+                entity_kind=infer_ols_entity_kind(doc),
                 score=score,
                 definition="",
                 comment="",
@@ -442,19 +502,29 @@ def query_ols_suggestions(
 
     ranked = sorted(by_iri.values(), key=lambda item: item.score, reverse=True)
     if fetch_metadata and ranked:
-        top = ranked[0]
-        metadata = fetch_ols_term_metadata(
-            ontology=top.ontology,
-            iri=top.iri,
-            request_timeout=request_timeout,
-        )
-        ranked[0] = replace(
-            top,
-            definition=metadata["definition"],
-            comment=metadata["comment"],
-            example=metadata["example"],
-            term_api_url=metadata["term_api_url"],
-        )
+        limit = min(max(metadata_limit, 0), len(ranked))
+        if limit == 0:
+            return ranked
+        enriched: list[OlsSuggestion] = []
+        for idx, item in enumerate(ranked):
+            if idx < limit:
+                metadata = fetch_ols_term_metadata(
+                    ontology=item.ontology,
+                    iri=item.iri,
+                    request_timeout=request_timeout,
+                )
+                enriched.append(
+                    replace(
+                        item,
+                        definition=metadata["definition"],
+                        comment=metadata["comment"],
+                        example=metadata["example"],
+                        term_api_url=metadata["term_api_url"],
+                    )
+                )
+            else:
+                enriched.append(item)
+        ranked = enriched
     return ranked
 
 
@@ -465,8 +535,9 @@ def build_local_ols_candidates(
     rows_per_ontology: int,
     request_timeout: float,
     fetch_metadata: bool,
+    top_n_ols: int,
 ) -> list[PairSuggestion]:
-    """Build local-vs-OLS candidates using best OLS suggestion per local term."""
+    """Build local-vs-OLS candidates using top-N OLS suggestions per local term."""
     candidates: list[PairSuggestion] = []
 
     for left in left_terms:
@@ -479,33 +550,38 @@ def build_local_ols_candidates(
             rows_per_ontology=rows_per_ontology,
             request_timeout=request_timeout,
             fetch_metadata=fetch_metadata,
+            metadata_limit=top_n_ols,
         )
         if not suggestions:
             continue
-        best = suggestions[0]
-        right_normalized = normalize_label(best.label)
-        method = "ols_api_top"
-        score = best.score
-        relation = relation_from_score(method, score)
+        for rank, hit in enumerate(suggestions[:top_n_ols], start=1):
+            right_normalized = normalize_label(hit.label)
+            method = "ols_api_top"
+            score = apply_kind_penalty(hit.score, left.term_kind, hit.entity_kind)
+            relation = relation_from_score(method, score)
 
-        candidates.append(
-            PairSuggestion(
-                left=left,
-                right_source=best.ontology,
-                right_term_iri=best.iri,
-                right_label=best.label,
-                right_definition=best.definition,
-                right_comment=best.comment,
-                right_example=best.example,
-                ols_term_api_url=best.term_api_url,
-                normalized_right_label=right_normalized,
-                match_method=method,
-                match_score=score,
-                relation=relation,
-                suggestion_source="ols_api",
-                notes="Auto-suggested OLS pair; review definition/scope before approval",
+            candidates.append(
+                PairSuggestion(
+                    left=left,
+                    right_source=hit.ontology,
+                    right_term_kind=hit.entity_kind,
+                    right_term_iri=hit.iri,
+                    right_label=hit.label,
+                    right_definition=hit.definition,
+                    right_comment=hit.comment,
+                    right_example=hit.example,
+                    ols_term_api_url=hit.term_api_url,
+                    normalized_right_label=right_normalized,
+                    match_method=method,
+                    match_score=score,
+                    relation=relation,
+                    suggestion_source="ols_api",
+                    notes=(
+                        f"Auto-suggested OLS pair (rank {rank}/{min(top_n_ols, len(suggestions))}); "
+                        "review definition/scope before approval"
+                    ),
+                )
             )
-        )
 
     return candidates
 
@@ -737,12 +813,14 @@ def write_candidate_rows(
     headers = [
         "alignment_id",
         "left_source",
+        "left_term_kind",
         "left_term_iri",
         "left_label",
         "left_definition",
         "left_comment",
         "left_example",
         "right_source",
+        "right_term_kind",
         "right_term_iri",
         "right_label",
         "right_definition",
@@ -770,6 +848,8 @@ def write_candidate_rows(
     ]
 
     now_ts = utc_now_timestamp()
+    left_source_norm = left_source.strip().upper()
+    fallback_right_source_norm = fallback_right_source.strip().upper()
     with output.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(
             handle,
@@ -779,22 +859,23 @@ def write_candidate_rows(
         )
         writer.writeheader()
         for idx, item in enumerate(suggestions, start=1):
+            current_right_source = (item.right_source or fallback_right_source).strip().upper()
             canonical_from = "right" if item.suggestion_source == "ols_api" else ""
             canonical_term_iri = item.right_term_iri if canonical_from == "right" else ""
             canonical_term_label = item.right_label if canonical_from == "right" else ""
-            canonical_term_source = (
-                (item.right_source or fallback_right_source) if canonical_from == "right" else ""
-            )
+            canonical_term_source = current_right_source if canonical_from == "right" else ""
             writer.writerow(
                 {
                     "alignment_id": f"CAND_{idx:04d}",
-                    "left_source": left_source,
+                    "left_source": left_source_norm,
+                    "left_term_kind": item.left.term_kind,
                     "left_term_iri": item.left.iri,
                     "left_label": item.left.label,
                     "left_definition": item.left.definition,
                     "left_comment": item.left.comment,
                     "left_example": item.left.example,
-                    "right_source": item.right_source or fallback_right_source,
+                    "right_source": current_right_source or fallback_right_source_norm,
+                    "right_term_kind": item.right_term_kind,
                     "right_term_iri": item.right_term_iri,
                     "right_label": item.right_label,
                     "right_definition": item.right_definition,
@@ -845,6 +926,7 @@ def main() -> int:
                 rows_per_ontology=config.ols_rows,
                 request_timeout=config.request_timeout,
                 fetch_metadata=config.ols_fetch_metadata,
+                top_n_ols=config.top_n_ols,
             )
         resolved_right_source = "ols"
     else:
@@ -861,6 +943,7 @@ def main() -> int:
             PairSuggestion(
                 left=item.left,
                 right_source=config.right_source,
+                right_term_kind=item.right_term_kind,
                 right_term_iri=item.right_term_iri,
                 right_label=item.right_label,
                 right_definition=item.right_definition,
