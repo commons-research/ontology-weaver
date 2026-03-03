@@ -18,13 +18,14 @@ import csv
 from dataclasses import replace
 import json
 import re
+import sys
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from difflib import SequenceMatcher
 from pathlib import Path
-from typing import Iterable
+from typing import Callable, Iterable
 
 OLS_API_SEARCH_URL = "https://www.ebi.ac.uk/ols4/api/search"
 DEFAULT_ONTOLOGIES = ["chebi", "obi", "ms", "chmo", "edam"]
@@ -104,6 +105,7 @@ class Config:
     max_left_terms: int
     curator: str
     include_existing_curated: bool
+    emit_progress: bool
 
 
 def parse_args() -> Config:
@@ -201,6 +203,11 @@ def parse_args() -> Config:
         action="store_true",
         help="Do not exclude pairs already present in curated alignments",
     )
+    parser.add_argument(
+        "--emit-progress",
+        action="store_true",
+        help="Emit machine-readable progress lines for UI streaming.",
+    )
 
     args = parser.parse_args()
 
@@ -240,6 +247,7 @@ def parse_args() -> Config:
         max_left_terms=args.max_left_terms,
         curator=args.curator.strip(),
         include_existing_curated=bool(args.include_existing_curated),
+        emit_progress=bool(args.emit_progress),
     )
 
 
@@ -397,12 +405,17 @@ def build_local_local_candidates(
     right_terms: Iterable[Term],
     min_score: float,
     focus: str,
+    progress_cb: Callable[[int, int, str], None] | None = None,
 ) -> list[PairSuggestion]:
     """Build one-to-one local-vs-local candidates using greedy best scoring."""
     scored: list[tuple[Term, Term, str, float]] = []
 
-    for left in left_terms:
+    left_list = list(left_terms)
+    total_left = len(left_list)
+    for idx, left in enumerate(left_list, start=1):
         if focus and focus not in left.normalized_label:
+            if progress_cb:
+                progress_cb(idx, total_left, "local-vs-local")
             continue
         for right in right_terms:
             if focus and focus not in right.normalized_label:
@@ -411,6 +424,8 @@ def build_local_local_candidates(
             score = apply_kind_penalty(score, left.term_kind, right.term_kind)
             if score >= min_score:
                 scored.append((left, right, method, score))
+        if progress_cb:
+            progress_cb(idx, total_left, "local-vs-local")
 
     scored.sort(key=lambda item: item[3], reverse=True)
 
@@ -536,12 +551,17 @@ def build_local_ols_candidates(
     request_timeout: float,
     fetch_metadata: bool,
     top_n_ols: int,
+    progress_cb: Callable[[int, int, str], None] | None = None,
 ) -> list[PairSuggestion]:
     """Build local-vs-OLS candidates using top-N OLS suggestions per local term."""
     candidates: list[PairSuggestion] = []
 
-    for left in left_terms:
+    left_list = list(left_terms)
+    total_left = len(left_list)
+    for idx, left in enumerate(left_list, start=1):
         if focus and focus not in left.normalized_label:
+            if progress_cb:
+                progress_cb(idx, total_left, "local-vs-ols")
             continue
 
         suggestions = query_ols_suggestions(
@@ -582,6 +602,8 @@ def build_local_ols_candidates(
                     ),
                 )
             )
+        if progress_cb:
+            progress_cb(idx, total_left, "local-vs-ols")
 
     return candidates
 
@@ -911,6 +933,12 @@ def main() -> int:
     if config.max_left_terms > 0:
         left_terms = left_terms[: config.max_left_terms]
 
+    def emit_progress(current: int, total: int, phase: str) -> None:
+        if not config.emit_progress:
+            return
+        # Machine-readable format for Streamlit UI progress parsing.
+        print(f"PROGRESS\t{current}\t{total}\t{phase}", flush=True)
+
     if config.use_ols_api:
         if not probe_ols_api(config.ontologies, config.request_timeout):
             suggestions = []
@@ -927,6 +955,7 @@ def main() -> int:
                 request_timeout=config.request_timeout,
                 fetch_metadata=config.ols_fetch_metadata,
                 top_n_ols=config.top_n_ols,
+                progress_cb=emit_progress,
             )
         resolved_right_source = "ols"
     else:
@@ -937,6 +966,7 @@ def main() -> int:
             right_terms=right_terms,
             min_score=config.min_score,
             focus=config.focus,
+            progress_cb=emit_progress,
         )
         # Inject the configured right source for local-vs-local mode.
         suggestions = [

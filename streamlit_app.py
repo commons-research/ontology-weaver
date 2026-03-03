@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from curation_app.auto_sync import STATE_SYNC_LAST_ERROR, auto_sync_sqlite
 from curation_app.context import enabled_source_ids, load_manifest, source_context, source_ids
 from curation_app.pages import (
     curate_candidates,
@@ -14,22 +15,37 @@ from curation_app.pages import (
     ols_ontologies,
     overview,
     sqlite_inspect,
-    sync_export,
 )
 
 STATE_SOURCE_ID = "active_source_id"
+STATE_CURATOR = "active_curator"
+STATE_PAGE = "active_page"
 
 
 PAGES = {
     "Overview": overview.render,
-    "Step 0 - Download": download_sources.render,
-    "Step 1 - Extract": extract_terms.render,
-    "Step 1.5 - OLS Ontologies": ols_ontologies.render,
-    "Step 2 - Generate": generate_candidates.render,
-    "Step 3 - Curate": curate_candidates.render,
-    "Step 4-5 - Review + Export": finalize_validate.render,
-    "Step 6 - Sync + Export": sync_export.render,
-    "Step 7 - SQLite Inspect": sqlite_inspect.render,
+    "Fetch schemas": download_sources.render,
+    "OLS catalog": ols_ontologies.render,
+    "Extract terms": extract_terms.render,
+    "Generate candidates": generate_candidates.render,
+    "Curate candidates": curate_candidates.render,
+    "Review and export": finalize_validate.render,
+    "Inspect SQLite": sqlite_inspect.render,
+}
+
+PAGE_GROUPS = {
+    "Overview": ["Overview"],
+    "Fetch schemas and ontologies": [
+        "Fetch schemas",
+        "OLS catalog",
+    ],
+    "Alignment workflow": [
+        "Extract terms",
+        "Generate candidates",
+        "Curate candidates",
+        "Review and export",
+    ],
+    "Data inspection": ["Inspect SQLite"],
 }
 
 
@@ -55,6 +71,13 @@ def main() -> None:
             help="Single source slug reused automatically across workflow steps.",
         )
         st.session_state[STATE_SOURCE_ID] = selected_source_id
+        curator_value = str(st.session_state.get(STATE_CURATOR, "") or "").strip()
+        curator_input = st.sidebar.text_input(
+            "Curator",
+            value=curator_value,
+            help="Your curator id/name used for review attribution in shared files.",
+        )
+        st.session_state[STATE_CURATOR] = curator_input.strip()
         ctx = source_context(selected_source_id, manifest_df)
         st.sidebar.caption(f"TTL: `{ctx.download_ttl.name}`")
         st.sidebar.caption(f"Terms: `{ctx.terms_tsv.name}`")
@@ -62,9 +85,27 @@ def main() -> None:
     else:
         st.sidebar.error("No source_id found in registry/external_sources.tsv")
 
-    st.sidebar.title("Workflow Modules")
-    selected_page = st.sidebar.radio("Navigate", options=list(PAGES.keys()))
+    sync_ok, sync_msg = auto_sync_sqlite(manifest_df)
+    if not sync_ok:
+        st.sidebar.warning(sync_msg)
+        detail = str(st.session_state.get(STATE_SYNC_LAST_ERROR, "")).strip()
+        if detail:
+            st.sidebar.caption(detail[:300])
 
+    if STATE_PAGE not in st.session_state or st.session_state[STATE_PAGE] not in PAGES:
+        st.session_state[STATE_PAGE] = "Overview"
+
+    st.sidebar.title("Workflow Modules")
+    for section_name, page_names in PAGE_GROUPS.items():
+        with st.sidebar.expander(section_name, expanded=(section_name == "Overview")):
+            for page_name in page_names:
+                is_active = st.session_state[STATE_PAGE] == page_name
+                label = f"• {page_name}" if is_active else page_name
+                if st.button(label, key=f"nav_{page_name}", use_container_width=True):
+                    st.session_state[STATE_PAGE] = page_name
+                    st.rerun()
+    selected_page = st.session_state[STATE_PAGE]
+    st.sidebar.caption(f"Current page: `{selected_page}`")
     PAGES[selected_page]()
 
 

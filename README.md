@@ -17,13 +17,13 @@ uv run streamlit run streamlit_app.py
 ## Modules
 
 - Overview
-- Step 0 - Download external sources
-- Step 1 - Extract term TSV from TTL
-- Step 2 - Generate pairwise candidates (local/local or local/OLS)
-- Step 3 - Curate candidate decisions (quick actions + batch edits)
-- Step 4-5 - Review curated dataset and export TTL
-- Step 6 - Sync TSV to SQLite and export reconciled outputs
-- Step 7 - Inspect SQLite tables and run SQL queries
+- Fetch schemas and ontologies - Download external sources + browse OLS catalog
+- Extract term TSV from TTL
+- Generate pairwise candidates (local/local or local/OLS)
+- Curate candidate decisions (quick actions + batch edits)
+- Review curated dataset and export TTL
+- Background sync - candidate TSVs are synced automatically to SQLite and reconciled exports
+- Inspect SQLite tables and run SQL queries
 
 ## Ontology Terms Glossary
 
@@ -37,3 +37,24 @@ uv run streamlit run streamlit_app.py
 - `registry/reconciled_mappings.tsv`
 - `registry/reconciled_canonical_groups.tsv`
 - `registry/alignment_curation.sqlite`
+
+## Collaboration workflow (git + PR)
+
+Use shared schema files (no per-curator filenames) and collaborate through branches/PRs.
+
+1. Pull latest `main` and create a branch: `curation/<schema>-<short-topic>`.
+2. In the app sidebar, select:
+   - `Source ID` (schema you curate)
+   - `Curator` (your name/id)
+3. Curate in the shared file for that schema:
+   - `registry/pair_alignment_candidates_<source>.tsv`
+4. Commit only relevant changes for your curation scope.
+5. Open a PR with a short summary:
+   - schema curated
+   - terms reviewed
+   - notable manual additions/rejections
+6. Reviewer checks diff + app preview, then merges.
+
+Notes:
+- Reviewer attribution is stored in TSV `reviewer`/`date_reviewed` fields.
+- SQLite/reconciled exports are auto-synced by the app and should not be manually edited.

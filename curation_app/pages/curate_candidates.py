@@ -1,4 +1,4 @@
-"""Step 3: interactive candidate curation page."""
+"""Interactive candidate curation page."""
 
 from __future__ import annotations
 
@@ -67,6 +67,7 @@ STATE_MTIME = "curation_mtime"
 STATE_SELECTED_ALIGNMENT = "curation_selected_alignment_id"
 STATE_KEPT_LEFT_TERMS = "curation_kept_left_terms"
 STATE_LEFT_TERM_INDEX = "curation_left_term_index"
+STATE_CURATOR = "active_curator"
 
 
 def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -809,7 +810,7 @@ def _render_term_card(
 
 
 def render() -> None:
-    st.title("Step 3: Curate Candidate Alignments")
+    st.title("Curate Candidate Alignments")
     st.markdown(
         """
         <style>
@@ -892,11 +893,17 @@ def render() -> None:
 
     ctx = active_source_context()
     if ctx is None:
-        st.warning("No source slug available. Configure sources in Step 0 first.")
+        st.warning("No source slug available. Configure sources in Download External Sources first.")
         return
 
     candidate_file = to_relpath(ctx.candidates_tsv)
     st.caption(f"Active candidates file: `{candidate_file}`")
+    active_curator = str(st.session_state.get(STATE_CURATOR, "") or "").strip()
+    if active_curator:
+        st.caption(f"Active curator: `{active_curator}`")
+    else:
+        st.error("Set a Curator name in the left sidebar before starting curation.")
+        return
 
     if (
         STATE_PATH not in st.session_state
@@ -940,7 +947,7 @@ def render() -> None:
 
     df = st.session_state[STATE_DF]
     if df.empty and not to_path(candidate_file).is_file():
-        st.warning("No candidate file found for this source. Please run Step 2 (Generate) first.")
+        st.warning("No candidate file found for this source. Please run Generate Pairwise Candidates first.")
         return
 
     term_groups = (
@@ -994,7 +1001,7 @@ def render() -> None:
     )
 
     if left_terms_df.empty:
-        st.info("No left terms available for current filters. Generate or reload candidates in Step 2.")
+        st.info("No left terms available for current filters. Generate or reload candidates first.")
     else:
         left_keys = list(left_terms_df[["left_source", "left_term_iri", "left_label"]].itertuples(index=False, name=None))
         if STATE_LEFT_TERM_INDEX not in st.session_state:
@@ -1230,7 +1237,7 @@ def render() -> None:
                         new_row["bioportal_search_url"] = _bioportal_search_url(left_label)
                         new_row["status"] = "needs_review"
                         new_row["curator"] = "auto"
-                        new_row["reviewer"] = ""
+                        new_row["reviewer"] = active_curator
                         new_row["date_reviewed"] = ""
                         new_row["notes"] = (
                             f"Manual {entity_kind} candidate added by URL with ontology id '{ontology_id}'."
@@ -1279,6 +1286,8 @@ def render() -> None:
                         elif note.lower() not in existing_notes.lower():
                             df.at[idx, "notes"] = f"{existing_notes} | {note}"
                         df.at[idx, "date_reviewed"] = utc_now_timestamp()
+                        if active_curator:
+                            df.at[idx, "reviewer"] = active_curator
 
                 st.session_state[STATE_DIRTY] = True
                 st.session_state[STATE_LEFT_TERM_INDEX] = min(selected_idx + 1, len(left_keys) - 1)
@@ -1309,6 +1318,8 @@ def render() -> None:
                     elif note.lower() not in existing_notes.lower():
                         df.at[idx, "notes"] = f"{existing_notes} | {note}"
                     df.at[idx, "date_reviewed"] = utc_now_timestamp()
+                    if active_curator:
+                        df.at[idx, "reviewer"] = active_curator
 
                 kept_left_terms.discard(left_term_key)
                 st.session_state[STATE_KEPT_LEFT_TERMS] = sorted(kept_left_terms)
@@ -1323,7 +1334,20 @@ def render() -> None:
             st.rerun()
 
     st.subheader("Working table preview")
-    render_clickable_dataframe(filtered, use_container_width=True, hide_index=True)
+    table_status = st.radio(
+        "Table status filter",
+        options=["Needs review", "Curated", "All"],
+        horizontal=True,
+        index=0,
+        help="Curated means status is not needs_review.",
+    )
+    table_df = filtered.copy()
+    if table_status == "Needs review":
+        table_df = table_df[table_df["status"] == "needs_review"]
+    elif table_status == "Curated":
+        table_df = table_df[table_df["status"] != "needs_review"]
+    st.caption(f"Table rows: {len(table_df)}")
+    render_clickable_dataframe(table_df, use_container_width=True, hide_index=True)
 
     st.download_button(
         label="Download working candidate TSV",

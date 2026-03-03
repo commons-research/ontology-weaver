@@ -1,4 +1,4 @@
-"""Step 1: TTL extraction page."""
+"""TTL extraction page."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def _ttl_namespace_suggestions(ttl_path: Path) -> list[str]:
 
 
 def render() -> None:
-    st.title("Step 1: Extract Terms From TTL")
+    st.title("Extract Terms From TTL")
 
     manifest_df = load_manifest()
     options = enabled_source_ids(manifest_df) or source_ids(manifest_df)

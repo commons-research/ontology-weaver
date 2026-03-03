@@ -1,0 +1,13 @@
+@prefix skos: <http://www.w3.org/2004/02/skos/core#> .
+@prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
+@prefix pf: <https://w3id.org/potential-funicular/schema#> .
+@prefix pfa: <https://w3id.org/potential-funicular/alignment/emi/> .
+
+<https://w3id.org/emi#ChemicalEntity> skos:exactMatch <http://purl.obolibrary.org/obo/CHEBI_24431> .
+pfa:CAND_0023 a pf:CuratedAlignment ; pf:sourceSlug "emi" ; pf:leftTerm <https://w3id.org/emi#ChemicalEntity> ; pf:rightTerm <http://purl.obolibrary.org/obo/CHEBI_24431> ; pf:relation "exact" ; pf:leftLabel "Chemical entity" ; pf:rightLabel "chemical entity" ; pf:matchMethod "ols_api_top" ; pf:notes "Auto-suggested OLS pair (rank 1/3); review definition/scope before approval | Validated selected right-side match." ; pf:matchScore "1.00"^^xsd:decimal .
+
+<https://w3id.org/emi#ExtractSample> skos:relatedMatch <http://purl.obolibrary.org/obo/OBI_0000423> .
+pfa:CAND_0047 a pf:CuratedAlignment ; pf:sourceSlug "emi" ; pf:leftTerm <https://w3id.org/emi#ExtractSample> ; pf:rightTerm <http://purl.obolibrary.org/obo/OBI_0000423> ; pf:relation "related" ; pf:leftLabel "Extract sample" ; pf:rightLabel "extract" ; pf:matchMethod "ols_api_top" ; pf:notes "Auto-suggested OLS pair (rank 1/3); review definition/scope before approval | Validated selected right-side match." ; pf:matchScore "0.67"^^xsd:decimal .
+
+<https://w3id.org/emi#DevelopmentalStage> skos:relatedMatch <http://purl.obolibrary.org/obo/UBERON_0000105> .
+pfa:CAND_0298 a pf:CuratedAlignment ; pf:sourceSlug "emi" ; pf:leftTerm <https://w3id.org/emi#DevelopmentalStage> ; pf:rightTerm <http://purl.obolibrary.org/obo/UBERON_0000105> ; pf:relation "related" ; pf:leftLabel "Developmental stage" ; pf:rightLabel "life cycle stage" ; pf:matchMethod "manual_url_lexical" ; pf:notes "Manual class candidate added by URL with ontology id 'uberon'. | Validated selected right-side match." ; pf:matchScore "0.46"^^xsd:decimal .
