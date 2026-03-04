@@ -2,7 +2,40 @@
 
 This repository supports a pairwise + SQLite ontology alignment workflow and now includes a Streamlit app to run the full pipeline with intermediate previews and exports.
 
-## Install dependencies (uv)
+## Install dependencies 
+
+### System dependencies
+
+#### Raptor
+
+
+**Linux**
+```bash
+# Debian/Ubuntu
+sudo apt-get install libraptor2-dev
+
+# Fedora/RHEL/CentOS
+sudo yum install raptor2-devel
+
+# Arch Linux
+sudo pacman -S raptor
+
+# openSUSE
+sudo zypper install raptor-devel
+```
+
+**macOS**
+```bash
+brew install raptor
+```
+
+**Windows**
+
+No native package manager support. Options:
+- Install via [Conda](https://anaconda.org/conda-forge/raptor2): `conda install -c conda-forge raptor2`
+- Or use [WSL](https://learn.microsoft.com/en-us/windows/wsl/) and follow the Linux instructions above
+
+### Python (uv)
 
 ```bash
 uv sync
