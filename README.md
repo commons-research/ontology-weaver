@@ -41,6 +41,20 @@ No native package manager support. Options:
 uv sync
 ```
 
+## System requirements
+
+- Required: `rapper` CLI (from Raptor RDF toolkit) for TTL extraction.
+
+Install examples:
+
+```bash
+# macOS (Homebrew)
+brew install raptor
+
+# Ubuntu/Debian
+sudo apt-get install -y raptor2-utils
+```
+
 ## Run the app
 
 ```bash
