@@ -8,18 +8,25 @@ import json
 from pathlib import Path
 import tempfile
 
+import pandas as pd
+from rdflib import Graph, URIRef
+from rdflib.namespace import OWL, RDF
 import streamlit as st
 
 from curation_app.config import DEFAULT_OLS_ONTOLOGIES_FILE
 from curation_app.helpers import (
     file_to_bytes,
+    list_files,
     read_tsv,
     render_clickable_dataframe,
     run_python_script,
+    to_path,
     to_relpath,
 )
 
 META_PATH = Path("registry/ols_ontologies_meta.json")
+DEFAULT_DOWNLOAD_OUTPUT_DIR = "registry/downloads/ontologies"
+DEFAULT_DOWNLOAD_TIMEOUT_SECONDS = 20.0
 
 
 def _sha256_bytes(data: bytes) -> str:
@@ -81,6 +88,72 @@ def _fixed_fetch_to(path: Path) -> tuple[bool, str]:
     return True, (result.stdout or "").strip()
 
 
+def _guess_rdf_format(path: Path) -> str | None:
+    suffix = path.suffix.lower()
+    if suffix in {".ttl", ".turtle"}:
+        return "turtle"
+    if suffix in {".rdf", ".owl", ".xml"}:
+        return "xml"
+    if suffix in {".json", ".jsonld"}:
+        return "json-ld"
+    if suffix in {".nt"}:
+        return "nt"
+    if suffix in {".nq"}:
+        return "nquads"
+    if suffix in {".trig"}:
+        return "trig"
+    return None
+
+
+@st.cache_data(show_spinner=False)
+def _extract_ontology_version(path_str: str, mtime: float) -> dict[str, str]:
+    del mtime
+    path = Path(path_str)
+    graph = Graph()
+    guessed = _guess_rdf_format(path)
+    try:
+        if guessed:
+            graph.parse(path, format=guessed)
+        else:
+            graph.parse(path)
+    except Exception as err:
+        return {
+            "ontology_iri_file": "",
+            "version_iri_file": "",
+            "version_info_file": "",
+            "parse_error": str(err),
+        }
+
+    ontology_subjects = {
+        subject for subject in graph.subjects(RDF.type, OWL.Ontology) if isinstance(subject, URIRef)
+    }
+    if not ontology_subjects:
+        ontology_subjects = {
+            subject for subject in graph.subjects(OWL.versionIRI, None) if isinstance(subject, URIRef)
+        }
+    if not ontology_subjects:
+        ontology_subjects = {
+            subject for subject in graph.subjects(OWL.versionInfo, None) if isinstance(subject, URIRef)
+        }
+
+    ontology_iri = ""
+    version_iri = ""
+    version_info = ""
+    if ontology_subjects:
+        subject = sorted(str(item) for item in ontology_subjects)[0]
+        ontology_iri = subject
+        subject_ref = URIRef(subject)
+        version_iri = next((str(obj) for obj in graph.objects(subject_ref, OWL.versionIRI)), "")
+        version_info = next((str(obj) for obj in graph.objects(subject_ref, OWL.versionInfo)), "")
+
+    return {
+        "ontology_iri_file": ontology_iri,
+        "version_iri_file": version_iri,
+        "version_info_file": version_info,
+        "parse_error": "",
+    }
+
+
 def render() -> None:
     st.title("OLS Ontology Catalog")
     st.write(
@@ -139,6 +212,96 @@ def render() -> None:
                 st.success(f"Catalog refreshed ({rows} rows).")
 
     catalog_df = read_tsv(DEFAULT_OLS_ONTOLOGIES_FILE)
+    st.subheader("Download Selected Ontologies")
+    st.caption(
+        "Select ontology IDs from the fetched OLS catalog and download their RDF files locally "
+        "(for example: `owl`, `rdfs`, `skos`)."
+    )
+    if catalog_df.empty:
+        st.info("Fetch the OLS catalog first to enable ontology downloads.")
+    else:
+        catalog_df = catalog_df.copy()
+        ontology_ids = [str(value).strip().lower() for value in catalog_df["ontology"].tolist() if str(value).strip()]
+        label_by_id = {
+            str(row.get("ontology", "")).strip().lower(): str(row.get("label", "")).strip()
+            for _, row in catalog_df.iterrows()
+        }
+        suggested_defaults = [ont for ont in ("owl", "rdfs", "skos") if ont in ontology_ids]
+
+        selected_ontologies = st.multiselect(
+            "Ontology IDs (searchable)",
+            options=ontology_ids,
+            default=suggested_defaults,
+            format_func=lambda ont: f"{ont} — {label_by_id.get(ont, '')}".rstrip(" — "),
+            key="ols_download_selected_ids",
+        )
+
+        if st.button(
+            "Download selected ontologies",
+            type="primary",
+            disabled=not selected_ontologies,
+            key="ols_download_button",
+        ):
+            args = [
+                "--catalog",
+                to_relpath(DEFAULT_OLS_ONTOLOGIES_FILE),
+                "--output-dir",
+                DEFAULT_DOWNLOAD_OUTPUT_DIR,
+                "--timeout",
+                str(float(DEFAULT_DOWNLOAD_TIMEOUT_SECONDS)),
+            ]
+            for ontology in selected_ontologies:
+                args.extend(["--ontology", ontology])
+            result = run_python_script("scripts/download_ols_ontologies.py", args)
+            if result.returncode != 0:
+                msg = (result.stderr or result.stdout or "Unknown download error").strip()
+                st.error(f"Ontology download failed: {msg}")
+            else:
+                st.success((result.stdout or "Ontology downloads completed.").strip())
+
+        output_dir_path = to_path(DEFAULT_DOWNLOAD_OUTPUT_DIR)
+        if output_dir_path.is_dir():
+            downloaded = list_files(output_dir_path, "*")
+            if downloaded:
+                st.caption(f"Downloaded files in `{to_relpath(output_dir_path)}`")
+                preview_files = downloaded[:300]
+                catalog_lookup = {
+                    str(row.get("ontology", "")).strip().lower(): {
+                        "catalog_version_iri": str(row.get("version_iri", "")).strip(),
+                        "catalog_last_loaded": str(row.get("last_loaded", "")).strip(),
+                        "catalog_ontology_iri": str(row.get("ontology_iri", "")).strip(),
+                    }
+                    for _, row in catalog_df.iterrows()
+                }
+                rows: list[dict[str, str | int]] = []
+                for path in preview_files:
+                    ontology_id = path.stem.strip().lower()
+                    file_info = _extract_ontology_version(str(path), path.stat().st_mtime)
+                    catalog_info = catalog_lookup.get(
+                        ontology_id,
+                        {
+                            "catalog_version_iri": "",
+                            "catalog_last_loaded": "",
+                            "catalog_ontology_iri": "",
+                        },
+                    )
+                    rows.append(
+                        {
+                            "file": path.name,
+                            "ontology_id": ontology_id,
+                            "size_bytes": path.stat().st_size,
+                            "ontology_iri_file": file_info["ontology_iri_file"],
+                            "version_iri_file": file_info["version_iri_file"],
+                            "version_info_file": file_info["version_info_file"],
+                            "catalog_version_iri": catalog_info["catalog_version_iri"],
+                            "catalog_last_loaded": catalog_info["catalog_last_loaded"],
+                            "catalog_ontology_iri": catalog_info["catalog_ontology_iri"],
+                            "parse_error": file_info["parse_error"],
+                        }
+                    )
+                versions_df = pd.DataFrame(rows)
+                render_clickable_dataframe(versions_df, use_container_width=True, hide_index=True)
+
     st.subheader("Catalog Preview")
     if catalog_df.empty and not DEFAULT_OLS_ONTOLOGIES_FILE.is_file():
         st.info("No local OLS catalog file yet. Click 'Check for updates'.")

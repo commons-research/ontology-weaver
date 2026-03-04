@@ -1,2 +1,1 @@
 canonical_term_iri	canonical_term_label	canonical_term_source	mapped_term_count	mapped_terms	alignment_ids
-http://purl.obolibrary.org/obo/UBERON_0001062	anatomical entity	UBERON	1	EMI:https://w3id.org/emi#AnatomicalEntity:Anatomical entity	EMI__CAND_0299

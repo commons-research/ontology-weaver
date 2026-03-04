@@ -22,6 +22,7 @@ uv run streamlit run streamlit_app.py
 - Generate pairwise candidates (local/local or local/OLS)
 - Curate candidate decisions (quick actions + batch edits)
 - Review curated dataset and export TTL
+- View schema documentation (pyLODE), interactive graph, RDFGlance linkout, and Mermaid export before/after curation
 - Background sync - candidate TSVs are synced automatically to SQLite and reconciled exports
 - Inspect SQLite tables and run SQL queries
 

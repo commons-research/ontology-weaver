@@ -15,6 +15,7 @@ from curation_app.pages import (
     ols_ontologies,
     overview,
     sqlite_inspect,
+    view_schema,
 )
 
 STATE_SOURCE_ID = "active_source_id"
@@ -30,6 +31,7 @@ PAGES = {
     "Generate candidates": generate_candidates.render,
     "Curate candidates": curate_candidates.render,
     "Review and export": finalize_validate.render,
+    "View schema": view_schema.render,
     "Inspect SQLite": sqlite_inspect.render,
 }
 
@@ -45,7 +47,7 @@ PAGE_GROUPS = {
         "Curate candidates",
         "Review and export",
     ],
-    "Data inspection": ["Inspect SQLite"],
+    "Data inspection": ["Inspect SQLite", "View schema"],
 }
 
 

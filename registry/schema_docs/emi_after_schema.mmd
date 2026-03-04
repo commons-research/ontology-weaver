@@ -1,0 +1,271 @@
+flowchart LR
+  n0{":hasAnatomicalEntity"}
+  n1["sosa:Sample"]
+  n2["uberon:UBERON_0001062"]
+  n3[":Aliquot"]
+  n4[":Blank"]
+  n5[":ExtractSample"]
+  n6[":QCSample"]
+  n7[":RawMaterial"]
+  n8{":hasDevelopmentalStage"}
+  n9{":hasPhysiologicalStage"}
+  n10{":hasSource"}
+  n11{":hasTarget"}
+  n12[":DevelopmentalStage"]
+  n13[":PhysiologicalStage"]
+  n14[":Interaction"]
+  n15{":hasHabitat"}
+  n16["prov:Activity"]
+  n17[":Habitat"]
+  n18{"prov:activity"}
+  n19{"prov:endedAtTime"}
+  n20{"prov:generated"}
+  n21{"prov:hadActivity"}
+  n22{"prov:invalidated"}
+  n23{"prov:qualifiedAssociation"}
+  n24{"prov:qualifiedCommunication"}
+  n25{"prov:qualifiedEnd"}
+  n26{"prov:qualifiedStart"}
+  n27{"prov:qualifiedUsage"}
+  n28{"prov:startedAtTime"}
+  n29{"prov:used"}
+  n30{"prov:wasAssociatedWith"}
+  n31{"prov:wasEndedBy"}
+  n32{"prov:wasGeneratedBy"}
+  n33{"prov:wasInformedBy"}
+  n34{"prov:wasInvalidatedBy"}
+  n35{"prov:wasStartedBy"}
+  n36["prov:ActivityInfluence"]
+  n37{"prov:influencer"}
+  n38["xsd:dateTime"]
+  n39["prov:Entity"]
+  n40{"prov:influenced"}
+  n41["prov:Influence"]
+  n42["prov:Association"]
+  n43{"prov:qualifiedInfluence"}
+  n44["prov:Communication"]
+  n45["prov:End"]
+  n46["prov:Start"]
+  n47["prov:Usage"]
+  n48{"prov:wasInfluencedBy"}
+  n49["prov:Agent"]
+  n50["prov:Generation"]
+  n51["prov:Invalidation"]
+  n52["owl:Thing"]
+  n53{"prov:agent"}
+  n54{"prov:entity"}
+  n55{"prov:atTime"}
+  n56{"prov:generatedAtTime"}
+  n57{"prov:invalidatedAtTime"}
+  n58{"sosa:resultTime"}
+  n59["prov:Bundle"]
+  n60["prov:Collection"]
+  n61["prov:Plan"]
+  n62{"prov:alternateOf"}
+  n63{"prov:hadMember"}
+  n64{"prov:hadPrimarySource"}
+  n65{"prov:qualifiedAttribution"}
+  n66{"prov:qualifiedDerivation"}
+  n67{"prov:qualifiedGeneration"}
+  n68{"prov:qualifiedInvalidation"}
+  n69{"prov:qualifiedPrimarySource"}
+  n70{"prov:qualifiedQuotation"}
+  n71{"prov:qualifiedRevision"}
+  n72{"prov:specializationOf"}
+  n73{"prov:value"}
+  n74{"prov:wasAttributedTo"}
+  n75{"prov:wasDerivedFrom"}
+  n76{"prov:wasQuotedFrom"}
+  n77{"prov:wasRevisionOf"}
+  n78["prov:AgentInfluence"]
+  n79["prov:EntityInfluence"]
+  n80{"prov:hadRole"}
+  n81{"prov:hadPlan"}
+  n82{"prov:qualifiedDelegation"}
+  n83["prov:InstantaneousEvent"]
+  n84{"prov:hadUsage"}
+  n85{"prov:actedOnBehalfOf"}
+  n86["prov:Organization"]
+  n87["prov:Person"]
+  n88["prov:SoftwareAgent"]
+  n89{"prov:hadGeneration"}
+  n90["prov:EmptyCollection"]
+  n91["prov:Attribution"]
+  n92["prov:Derivation"]
+  n93["prov:PrimarySource"]
+  n94["prov:Quotation"]
+  n95["prov:Revision"]
+  n96["prov:Delegation"]
+  n97["prov:Role"]
+  n36 -->|subClassOf| n41
+  n78 -->|subClassOf| n41
+  n79 -->|subClassOf| n41
+  n42 -->|subClassOf| n78
+  n91 -->|subClassOf| n78
+  n96 -->|subClassOf| n78
+  n59 -->|subClassOf| n39
+  n60 -->|subClassOf| n39
+  n61 -->|subClassOf| n39
+  n44 -->|subClassOf| n36
+  n50 -->|subClassOf| n36
+  n51 -->|subClassOf| n36
+  n92 -->|subClassOf| n79
+  n45 -->|subClassOf| n79
+  n46 -->|subClassOf| n79
+  n47 -->|subClassOf| n79
+  n90 -->|subClassOf| n60
+  n45 -->|subClassOf| n83
+  n50 -->|subClassOf| n83
+  n51 -->|subClassOf| n83
+  n46 -->|subClassOf| n83
+  n47 -->|subClassOf| n83
+  n86 -->|subClassOf| n49
+  n87 -->|subClassOf| n49
+  n88 -->|subClassOf| n49
+  n93 -->|subClassOf| n92
+  n94 -->|subClassOf| n92
+  n95 -->|subClassOf| n92
+  n3 -->|subClassOf| n1
+  n4 -->|subClassOf| n1
+  n5 -->|subClassOf| n1
+  n6 -->|subClassOf| n1
+  n7 -->|subClassOf| n1
+  n14 -->|subClassOf| n16
+  n85 -->|subPropertyOf| n48
+  n63 -->|subPropertyOf| n48
+  n29 -->|subPropertyOf| n48
+  n30 -->|subPropertyOf| n48
+  n74 -->|subPropertyOf| n48
+  n75 -->|subPropertyOf| n48
+  n31 -->|subPropertyOf| n48
+  n32 -->|subPropertyOf| n48
+  n33 -->|subPropertyOf| n48
+  n34 -->|subPropertyOf| n48
+  n35 -->|subPropertyOf| n48
+  n18 -->|subPropertyOf| n37
+  n53 -->|subPropertyOf| n37
+  n54 -->|subPropertyOf| n37
+  n20 -->|subPropertyOf| n40
+  n22 -->|subPropertyOf| n40
+  n64 -->|subPropertyOf| n75
+  n76 -->|subPropertyOf| n75
+  n77 -->|subPropertyOf| n75
+  n23 -->|subPropertyOf| n43
+  n65 -->|subPropertyOf| n43
+  n24 -->|subPropertyOf| n43
+  n82 -->|subPropertyOf| n43
+  n66 -->|subPropertyOf| n43
+  n25 -->|subPropertyOf| n43
+  n67 -->|subPropertyOf| n43
+  n68 -->|subPropertyOf| n43
+  n69 -->|subPropertyOf| n43
+  n70 -->|subPropertyOf| n43
+  n71 -->|subPropertyOf| n43
+  n26 -->|subPropertyOf| n43
+  n27 -->|subPropertyOf| n43
+  n72 -->|subPropertyOf| n62
+  n85 -->|domain| n49
+  n82 -->|domain| n49
+  n18 -->|domain| n36
+  n53 -->|domain| n78
+  n62 -->|domain| n39
+  n64 -->|domain| n39
+  n65 -->|domain| n39
+  n66 -->|domain| n39
+  n67 -->|domain| n39
+  n68 -->|domain| n39
+  n69 -->|domain| n39
+  n70 -->|domain| n39
+  n71 -->|domain| n39
+  n72 -->|domain| n39
+  n74 -->|domain| n39
+  n75 -->|domain| n39
+  n32 -->|domain| n39
+  n34 -->|domain| n39
+  n76 -->|domain| n39
+  n77 -->|domain| n39
+  n56 -->|domain| n39
+  n57 -->|domain| n39
+  n73 -->|domain| n39
+  n54 -->|domain| n79
+  n20 -->|domain| n16
+  n22 -->|domain| n16
+  n23 -->|domain| n16
+  n24 -->|domain| n16
+  n25 -->|domain| n16
+  n26 -->|domain| n16
+  n27 -->|domain| n16
+  n29 -->|domain| n16
+  n30 -->|domain| n16
+  n31 -->|domain| n16
+  n33 -->|domain| n16
+  n35 -->|domain| n16
+  n19 -->|domain| n16
+  n28 -->|domain| n16
+  n21 -->|domain| n41
+  n80 -->|domain| n41
+  n37 -->|domain| n41
+  n89 -->|domain| n92
+  n84 -->|domain| n92
+  n63 -->|domain| n60
+  n81 -->|domain| n42
+  n0 -->|domain| n1
+  n8 -->|domain| n1
+  n9 -->|domain| n1
+  n15 -->|domain| n14
+  n10 -->|domain| n14
+  n11 -->|domain| n14
+  n55 -->|domain| n83
+  n72 -->|range| n39
+  n77 -->|range| n39
+  n62 -->|range| n39
+  n54 -->|range| n39
+  n20 -->|range| n39
+  n63 -->|range| n39
+  n64 -->|range| n39
+  n22 -->|range| n39
+  n29 -->|range| n39
+  n75 -->|range| n39
+  n31 -->|range| n39
+  n76 -->|range| n39
+  n35 -->|range| n39
+  n85 -->|range| n49
+  n53 -->|range| n49
+  n30 -->|range| n49
+  n74 -->|range| n49
+  n18 -->|range| n16
+  n21 -->|range| n16
+  n32 -->|range| n16
+  n33 -->|range| n16
+  n34 -->|range| n16
+  n89 -->|range| n50
+  n67 -->|range| n50
+  n81 -->|range| n61
+  n80 -->|range| n97
+  n84 -->|range| n47
+  n27 -->|range| n47
+  n37 -->|range| n52
+  n23 -->|range| n42
+  n65 -->|range| n91
+  n24 -->|range| n44
+  n82 -->|range| n96
+  n66 -->|range| n92
+  n25 -->|range| n45
+  n43 -->|range| n41
+  n68 -->|range| n51
+  n69 -->|range| n93
+  n70 -->|range| n94
+  n71 -->|range| n95
+  n26 -->|range| n46
+  n0 -->|range| n2
+  n8 -->|range| n12
+  n15 -->|range| n17
+  n9 -->|range| n13
+  n10 -->|range| n1
+  n11 -->|range| n1
+  n55 -->|range| n38
+  n19 -->|range| n38
+  n56 -->|range| n38
+  n57 -->|range| n38
+  n28 -->|range| n38
+  n58 -->|range| n38

@@ -98,7 +98,8 @@ def render() -> None:
     st.write("3. **Generate candidates**: build left-vs-right or left-vs-OLS candidate matches.")
     st.write("4. **Curate candidates**: validate one match (or keep left term) for each left concept.")
     st.write("5. **Review and export**: filter curated dataset and export updated source TTL.")
-    st.write("6. **Inspect SQLite**: run table previews and SQL checks on auto-synced reconciliation tables.")
+    st.write("6. **View schema**: inspect ontology documentation before/after curation with pyLODE.")
+    st.write("7. **Inspect SQLite**: run table previews and SQL checks on auto-synced reconciliation tables.")
 
     st.subheader("Open modules")
     c1, c2 = st.columns(2)
@@ -138,4 +139,9 @@ def render() -> None:
             "Review and export",
             "Review and export",
             "Review curated rows and export updated source TTL.",
+        )
+        _nav_button(
+            "View schema",
+            "View schema",
+            "Generate and view ontology documentation with pyLODE.",
         )

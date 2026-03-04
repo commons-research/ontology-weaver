@@ -1,0 +1,76 @@
+{
+  "catalog_version": "1",
+  "sources": {
+    "owl": "https://www.w3.org/2002/07/owl#",
+    "rdfs": "https://www.w3.org/2000/01/rdf-schema#",
+    "skos": "https://www.w3.org/2004/02/skos/core#"
+  },
+  "relations": [
+    {
+      "iri": "http://www.w3.org/2002/07/owl#disjointUnionOf",
+      "curie": "owl:disjointUnionOf",
+      "label": "disjointUnionOf",
+      "definition": "The property that determines that a given class is equivalent to the disjoint union of a collection of other classes."
+    },
+    {
+      "iri": "http://www.w3.org/2002/07/owl#equivalentClass",
+      "curie": "owl:equivalentClass",
+      "label": "equivalentClass",
+      "definition": "The property that determines that two given classes are equivalent, and that is used to specify datatype definitions."
+    },
+    {
+      "iri": "http://www.w3.org/2002/07/owl#equivalentProperty",
+      "curie": "owl:equivalentProperty",
+      "label": "equivalentProperty",
+      "definition": "The property that determines that two given properties are equivalent."
+    },
+    {
+      "iri": "http://www.w3.org/2000/01/rdf-schema#subClassOf",
+      "curie": "rdfs:subClassOf",
+      "label": "subClassOf",
+      "definition": "The subject is a subclass of a class."
+    },
+    {
+      "iri": "http://www.w3.org/2000/01/rdf-schema#subPropertyOf",
+      "curie": "rdfs:subPropertyOf",
+      "label": "subPropertyOf",
+      "definition": "The subject is a subproperty of a property."
+    },
+    {
+      "iri": "http://www.w3.org/2004/02/skos/core#broadMatch",
+      "curie": "skos:broadMatch",
+      "label": "has broader match",
+      "definition": "skos:broadMatch is used to state a hierarchical mapping link between two conceptual resources in different concept schemes."
+    },
+    {
+      "iri": "http://www.w3.org/2004/02/skos/core#closeMatch",
+      "curie": "skos:closeMatch",
+      "label": "has close match",
+      "definition": "skos:closeMatch is used to link two concepts that are sufficiently similar that they can be used interchangeably in some information retrieval applications. In order to avoid the possibility of \"compound errors\" when combining mappings across more than two concept schemes, skos:closeMatch is not declared to be a transitive property."
+    },
+    {
+      "iri": "http://www.w3.org/2004/02/skos/core#exactMatch",
+      "curie": "skos:exactMatch",
+      "label": "has exact match",
+      "definition": "skos:exactMatch is disjoint with each of the properties skos:broadMatch and skos:relatedMatch."
+    },
+    {
+      "iri": "http://www.w3.org/2004/02/skos/core#mappingRelation",
+      "curie": "skos:mappingRelation",
+      "label": "is in mapping relation with",
+      "definition": "These concept mapping relations mirror semantic relations, and the data model defined below is similar (with the exception of skos:exactMatch) to the data model defined for semantic relations. A distinct vocabulary is provided for concept mapping relations, to provide a convenient way to differentiate links within a concept scheme from links between concept schemes. However, this pattern of usage is not a formal requirement of the SKOS data model, and relies on informal definitions of best practice."
+    },
+    {
+      "iri": "http://www.w3.org/2004/02/skos/core#narrowMatch",
+      "curie": "skos:narrowMatch",
+      "label": "has narrower match",
+      "definition": "skos:narrowMatch is used to state a hierarchical mapping link between two conceptual resources in different concept schemes."
+    },
+    {
+      "iri": "http://www.w3.org/2004/02/skos/core#relatedMatch",
+      "curie": "skos:relatedMatch",
+      "label": "has related match",
+      "definition": "skos:relatedMatch is used to state an associative mapping link between two conceptual resources in different concept schemes."
+    }
+  ]
+}

@@ -11,6 +11,8 @@ from urllib.parse import quote, quote_plus, urlencode, urlparse
 
 import pandas as pd
 import streamlit as st
+from rdflib import Graph, URIRef
+from rdflib.namespace import OWL, RDF, RDFS, SKOS
 
 from curation_app.context import active_source_context
 from curation_app.helpers import (
@@ -56,9 +58,84 @@ REQUIRED_COLUMNS = [
 ]
 
 RELATIONS = ["exact", "close", "broad", "narrow", "related"]
+MAPPING_RELATIONS_DIR = to_path("registry/downloads/ontologies")
+MAPPING_RELATION_ONTOLOGY_IDS = ("owl", "rdfs", "skos")
+MAPPING_RELATION_PLACEHOLDER = "(select mapping relation)"
 STATUSES = ["needs_review", "approved", "rejected", "deprecated"]
 CANONICAL_FROM = ["", "left", "right", "manual"]
 KIND_MISMATCH_SCORE_FACTOR = 0.75
+
+MAPPING_GUIDANCE: dict[str, dict[str, str]] = {
+    "owl:equivalentClass": {
+        "tier": "recommended",
+        "when": "Use when both terms denote the same class meaning across ontologies.",
+        "example": "ex:Automobile owl:equivalentClass ex:Car",
+    },
+    "owl:equivalentProperty": {
+        "tier": "recommended",
+        "when": "Use when both terms are properties with the same intended semantics.",
+        "example": "ex:birthDate owl:equivalentProperty schema:birthDate",
+    },
+    "rdfs:subClassOf": {
+        "tier": "recommended",
+        "when": "Use when source class is narrower than target class.",
+        "example": "ex:GraduateStudent rdfs:subClassOf ex:Student",
+    },
+    "rdfs:subPropertyOf": {
+        "tier": "recommended",
+        "when": "Use when source property is a specialization of target property.",
+        "example": "ex:hasBiologicalMother rdfs:subPropertyOf ex:hasParent",
+    },
+    "skos:exactMatch": {
+        "tier": "recommended",
+        "when": "Use for near-equivalent cross-scheme concepts when you avoid OWL commitment.",
+        "example": "ex:ConceptA skos:exactMatch ex:ConceptB",
+    },
+    "skos:closeMatch": {
+        "tier": "recommended",
+        "when": "Use when concepts are very close but not strictly identical in all contexts.",
+        "example": "ex:ConceptA skos:closeMatch ex:ConceptB",
+    },
+    "skos:broadMatch": {
+        "tier": "recommended",
+        "when": "Use when source concept is broader than target concept.",
+        "example": "ex:ConceptA skos:broadMatch ex:ConceptB",
+    },
+    "skos:narrowMatch": {
+        "tier": "recommended",
+        "when": "Use when source concept is narrower than target concept.",
+        "example": "ex:ConceptA skos:narrowMatch ex:ConceptB",
+    },
+    "skos:relatedMatch": {
+        "tier": "recommended",
+        "when": "Use for associative cross-scheme relation without hierarchy or equivalence.",
+        "example": "ex:ConceptA skos:relatedMatch ex:ConceptC",
+    },
+    "skos:mappingRelation": {
+        "tier": "advanced",
+        "when": "Generic parent mapping relation; prefer a specific SKOS mapping relation above.",
+        "example": "ex:ConceptA skos:mappingRelation ex:ConceptB",
+    },
+    "owl:disjointUnionOf": {
+        "tier": "advanced",
+        "when": "Modeling axiom for class decomposition, not a routine alignment mapping.",
+        "example": "ex:Vehicle owl:disjointUnionOf (ex:Car ex:Bus ex:Bicycle)",
+    },
+}
+
+MAPPING_GUIDANCE_ORDER = [
+    "owl:equivalentClass",
+    "owl:equivalentProperty",
+    "rdfs:subClassOf",
+    "rdfs:subPropertyOf",
+    "skos:exactMatch",
+    "skos:closeMatch",
+    "skos:broadMatch",
+    "skos:narrowMatch",
+    "skos:relatedMatch",
+    "skos:mappingRelation",
+    "owl:disjointUnionOf",
+]
 
 STATE_PATH = "curation_path"
 STATE_DF = "curation_df"
@@ -301,11 +378,185 @@ def _manual_match_score(
 
 
 def _relation_for_score(score: float) -> str:
-    if score >= 0.99:
-        return "exact"
-    if score >= 0.85:
-        return "close"
-    return "related"
+    return ""
+
+
+def _normalize_mapping_relation(value: object, allowed: set[str]) -> str:
+    rel = str(value or "").strip()
+    if rel in allowed:
+        return rel
+    return ""
+
+
+def _normalize_kind(value: object) -> str:
+    kind = str(value or "").strip().lower()
+    if kind in {"class", "property", "individual"}:
+        return kind
+    return ""
+
+
+def _derived_export_mapping_labels(relation: str, left_kind: object, right_kind: object) -> list[str]:
+    del left_kind, right_kind
+    rel_bucket = relation.strip()
+    if rel_bucket:
+        return [rel_bucket]
+    return []
+
+
+def _short_local_name(iri: str) -> str:
+    if "#" in iri:
+        return iri.rsplit("#", 1)[-1]
+    if "/" in iri:
+        return iri.rsplit("/", 1)[-1]
+    return iri
+
+
+def _curie_for_iri(iri: str) -> str:
+    if iri.startswith("http://www.w3.org/2002/07/owl#"):
+        return "owl:" + _short_local_name(iri)
+    if iri.startswith("http://www.w3.org/2000/01/rdf-schema#"):
+        return "rdfs:" + _short_local_name(iri)
+    if iri.startswith("http://www.w3.org/2004/02/skos/core#"):
+        return "skos:" + _short_local_name(iri)
+    return iri
+
+
+def _build_mapping_relation_entries(merged: Graph) -> list[dict[str, str]]:
+    skos_mapping_root = SKOS.mappingRelation
+    skos_candidates: set[URIRef] = {skos_mapping_root}
+    changed = True
+    while changed:
+        changed = False
+        for subj, _, obj in merged.triples((None, RDFS.subPropertyOf, None)):
+            if isinstance(subj, URIRef) and isinstance(obj, URIRef) and obj in skos_candidates and subj not in skos_candidates:
+                skos_candidates.add(subj)
+                changed = True
+
+    keyword_tokens = ("equivalent", "same as", "subclass", "subproperty", "see also", "mapping", "match")
+    structural_candidates: set[URIRef] = set()
+    for subj in set(merged.subjects(RDF.type, RDF.Property)) | set(merged.subjects(RDF.type, OWL.ObjectProperty)) | set(
+        merged.subjects(RDF.type, OWL.AnnotationProperty)
+    ):
+        if not isinstance(subj, URIRef):
+            continue
+        iri = str(subj)
+        if iri.startswith("http://www.w3.org/2002/07/owl#") or iri.startswith("http://www.w3.org/2000/01/rdf-schema#"):
+            text_parts = [iri.lower()]
+            for obj in merged.objects(subj, RDFS.label):
+                text_parts.append(str(obj).lower())
+            for obj in merged.objects(subj, RDFS.comment):
+                text_parts.append(str(obj).lower())
+            blob = " ".join(text_parts)
+            if any(tok in blob for tok in keyword_tokens):
+                structural_candidates.add(subj)
+
+    candidates = structural_candidates | skos_candidates
+
+    entries: list[dict[str, str]] = []
+    for iri_ref in sorted(
+        candidates,
+        key=lambda u: (
+            0 if str(u).startswith("http://www.w3.org/2002/07/owl#")
+            else 1 if str(u).startswith("http://www.w3.org/2000/01/rdf-schema#")
+            else 2 if str(u).startswith("http://www.w3.org/2004/02/skos/core#")
+            else 3,
+            _curie_for_iri(str(u)).lower(),
+        ),
+    ):
+        iri = str(iri_ref)
+        label = ""
+        definition = ""
+        for obj in merged.objects(iri_ref, RDFS.label):
+            label = str(obj).strip()
+            if label:
+                break
+        for obj in merged.objects(iri_ref, RDFS.comment):
+            definition = str(obj).strip()
+            if definition:
+                break
+        if not definition:
+            for obj in merged.objects(iri_ref, SKOS.definition):
+                definition = str(obj).strip()
+                if definition:
+                    break
+        entries.append(
+            {
+                "iri": iri,
+                "curie": _curie_for_iri(iri),
+                "label": label or _short_local_name(iri),
+                "definition": definition or "",
+            }
+        )
+
+    return entries
+
+
+def _guess_rdf_format(path: Path) -> str | None:
+    suffix = path.suffix.lower()
+    if suffix in {".ttl", ".turtle"}:
+        return "turtle"
+    if suffix in {".rdf", ".owl", ".xml"}:
+        return "xml"
+    if suffix in {".json", ".jsonld"}:
+        return "json-ld"
+    if suffix == ".nt":
+        return "nt"
+    if suffix == ".nq":
+        return "nquads"
+    if suffix == ".trig":
+        return "trig"
+    return None
+
+
+def _find_mapping_relation_files() -> list[Path]:
+    if not MAPPING_RELATIONS_DIR.is_dir():
+        return []
+    files = [
+        path
+        for path in MAPPING_RELATIONS_DIR.iterdir()
+        if path.is_file() and path.stem.strip().lower() in MAPPING_RELATION_ONTOLOGY_IDS
+    ]
+    files.sort(key=lambda p: p.name.lower())
+    return files
+
+
+def _load_mapping_relations_from_local_ontologies() -> tuple[dict | None, str]:
+    source_files = _find_mapping_relation_files()
+    if not source_files:
+        return (
+            None,
+            "No local mapping ontologies found. Download `owl`, `rdfs`, and `skos` first "
+            "in `Fetch schemas and ontologies`.",
+        )
+
+    merged = Graph()
+    parse_failures: list[str] = []
+    for path in source_files:
+        try:
+            guessed = _guess_rdf_format(path)
+            if guessed:
+                merged.parse(path, format=guessed)
+            else:
+                merged.parse(path)
+        except Exception as exc:
+            parse_failures.append(f"{path.name}: {exc}")
+
+    entries = _build_mapping_relation_entries(merged)
+    if not entries:
+        msg = "No mapping relation terms found in local ontology files."
+        if parse_failures:
+            msg = msg + " Parse issues: " + "; ".join(parse_failures[:3])
+        return None, msg
+
+    payload = {
+        "catalog_version": "local-files-v1",
+        "sources": [to_relpath(path) for path in source_files],
+        "relations": entries,
+    }
+    msg = f"Loaded {len(entries)} relation term(s) from local ontology files."
+    if parse_failures:
+        msg = msg + " Some files could not be parsed."
+    return payload, msg
 
 
 def _first_text(value: object) -> str:
@@ -347,6 +598,17 @@ def _extract_annotation_by_substring(annotations: object, needle: str) -> str:
             if text:
                 return text
     return ""
+
+
+def _mapping_guidance_text(rel: str, fallback_definition: str) -> str:
+    entry = MAPPING_GUIDANCE.get(rel, {})
+    when = str(entry.get("when", "")).strip()
+    example = str(entry.get("example", "")).strip()
+    if when and example:
+        return f"{when} Example: `{example}`"
+    if when:
+        return when
+    return fallback_definition
 
 
 def _infer_ontology_from_iri(iri: str) -> str:
@@ -945,6 +1207,24 @@ def render() -> None:
             st.session_state[STATE_MTIME] = _file_mtime(candidate_file)
             st.success(f"Saved `{candidate_file}`")
 
+    relation_catalog, catalog_msg = _load_mapping_relations_from_local_ontologies()
+    if relation_catalog is None:
+        st.error(catalog_msg or "Mapping relation catalog unavailable.")
+        return
+    relations = relation_catalog.get("relations", [])
+    relation_options = [str(x.get("curie", "")).strip() for x in relations if str(x.get("curie", "")).strip()]
+    relation_definitions = {
+        str(x.get("curie", "")).strip(): str(x.get("definition", "")).strip() or str(x.get("label", "")).strip()
+        for x in relations
+        if str(x.get("curie", "")).strip()
+    }
+    relation_allowed = set(relation_options)
+    if not relation_options:
+        st.error("Mapping relation catalog has no relation entries.")
+        return
+    if catalog_msg:
+        st.caption(catalog_msg)
+
     df = st.session_state[STATE_DF]
     if df.empty and not to_path(candidate_file).is_file():
         st.warning("No candidate file found for this source. Please run Generate Pairwise Candidates first.")
@@ -1047,14 +1327,73 @@ def render() -> None:
                 row_idx = int(df.index[df["alignment_id"] == selected_alignment_id][0])
                 row = df.loc[row_idx]
 
+        default_relation = _normalize_mapping_relation(
+            row.get("relation", "") if row is not None else "", relation_allowed
+        )
+        relation_select_options = [MAPPING_RELATION_PLACEHOLDER] + relation_options
+        selected_mapping_relation = st.selectbox(
+            "Mapping relation (OWL/RDFS/SKOS)",
+            options=relation_select_options,
+            index=(
+                relation_select_options.index(default_relation)
+                if default_relation in relation_select_options
+                else 0
+            ),
+            key=f"mapping_relation_{left_term_key}",
+            help="Searchable dropdown for semantic mapping relation between source term and selected mapped term.",
+        )
+        mapping_relation_selected = selected_mapping_relation in relation_allowed
+        if mapping_relation_selected:
+            st.caption(
+                _mapping_guidance_text(
+                    selected_mapping_relation,
+                    relation_definitions.get(selected_mapping_relation, ""),
+                )
+            )
+        else:
+            st.caption("Select a mapping relation to enable mapping between source and target entities.")
+        if mapping_relation_selected:
+            preview_labels = _derived_export_mapping_labels(
+                selected_mapping_relation,
+                left_row_series.get("left_term_kind", ""),
+                row.get("right_term_kind", "") if row is not None else "",
+            )
+            if preview_labels:
+                st.caption("Derived export mappings: " + ", ".join(f"`{x}`" for x in preview_labels))
+        with st.expander("Mapping guidance", expanded=False):
+            recommended_ordered = [
+                rel for rel in MAPPING_GUIDANCE_ORDER if rel in relation_options and MAPPING_GUIDANCE.get(rel, {}).get("tier") != "advanced"
+            ]
+            advanced_ordered = [
+                rel for rel in MAPPING_GUIDANCE_ORDER if rel in relation_options and MAPPING_GUIDANCE.get(rel, {}).get("tier") == "advanced"
+            ]
+            remaining = [rel for rel in relation_options if rel not in set(recommended_ordered + advanced_ordered)]
+
+            st.markdown("**Recommended first (ontology reconciliation)**")
+            for rel in recommended_ordered:
+                st.markdown(
+                    f"- `{rel}`: {_mapping_guidance_text(rel, relation_definitions.get(rel, ''))}"
+                )
+            if not recommended_ordered:
+                st.markdown("- No recommended relations available from local mapping ontologies.")
+
+            st.markdown("**Advanced / specific modeling cases**")
+            for rel in advanced_ordered:
+                st.markdown(
+                    f"- `{rel}`: {_mapping_guidance_text(rel, relation_definitions.get(rel, ''))}"
+                )
+            for rel in remaining:
+                st.markdown(f"- `{rel}`: {relation_definitions.get(rel, '')}")
+
         st.subheader("Side-by-side context")
         left_col, right_col = st.columns(2)
         with left_col:
             st.markdown(f"**{_display_source(left_source)} term**")
+            left_card_selected = True if mapping_relation_selected else left_is_kept
             _render_term_card(
                 side="left",
                 title=left_label,
-                selected=left_is_kept,
+                selected=left_card_selected,
                 fields=[
                     ("Source", _display_source(left_row_series["left_source"])),
                     ("Kind", _display_kind(left_row_series.get("left_term_kind", ""))),
@@ -1082,12 +1421,15 @@ def render() -> None:
                         right_row.get("right_term_kind", ""),
                     )
                     has_right_decision = bool(selected_alignment_id)
-                    if left_is_kept:
-                        card_state = False
-                    elif has_right_decision:
-                        card_state = is_selected
+                    if mapping_relation_selected:
+                        card_state = is_selected if has_right_decision else None
                     else:
-                        card_state = None
+                        if left_is_kept:
+                            card_state = False
+                        elif has_right_decision:
+                            card_state = is_selected
+                        else:
+                            card_state = None
                     title = str(right_row["right_label"] or right_row["right_term_iri"] or "(no label)")
                     if is_selected:
                         title = f"{title} [selected]"
@@ -1257,8 +1599,10 @@ def render() -> None:
                         st.session_state[STATE_KEPT_LEFT_TERMS] = sorted(kept_left_terms)
                         st.success("Manual candidate added.")
                         st.rerun()
-        action_cols = st.columns(2)
-        decision_made = left_is_kept or (row is not None and row_idx is not None)
+        if mapping_relation_selected:
+            decision_made = row is not None and row_idx is not None
+        else:
+            decision_made = left_is_kept or (row is not None and row_idx is not None)
         if row is not None:
             selected_left_kind = left_row_series.get("left_term_kind", "")
             selected_right_kind = row.get("right_term_kind", "")
@@ -1268,6 +1612,8 @@ def render() -> None:
                     f"`{_display_kind(selected_right_kind)}` while left term is "
                     f"`{_display_kind(selected_left_kind)}`."
                 )
+
+        action_cols = st.columns(2)
         if action_cols[0].button("Validate selection", type="primary", disabled=not decision_made):
             if left_is_kept:
                 if not group_df.empty:
@@ -1281,6 +1627,7 @@ def render() -> None:
                         df.at[idx, "canonical_term_iri"] = ""
                         df.at[idx, "canonical_term_label"] = ""
                         df.at[idx, "canonical_term_source"] = ""
+                        df.at[idx, "relation"] = ""
                         if not existing_notes:
                             df.at[idx, "notes"] = note
                         elif note.lower() not in existing_notes.lower():
@@ -1304,6 +1651,7 @@ def render() -> None:
                         df.at[idx, "canonical_term_iri"] = df.at[idx, "right_term_iri"]
                         df.at[idx, "canonical_term_label"] = df.at[idx, "right_label"]
                         df.at[idx, "canonical_term_source"] = df.at[idx, "right_source"]
+                        df.at[idx, "relation"] = selected_mapping_relation if mapping_relation_selected else ""
                         df.at[idx, "suggestion_source"] = "manual_curated"
                         note = "Validated selected right-side match."
                     else:
@@ -1312,6 +1660,7 @@ def render() -> None:
                         df.at[idx, "canonical_term_iri"] = ""
                         df.at[idx, "canonical_term_label"] = ""
                         df.at[idx, "canonical_term_source"] = ""
+                        df.at[idx, "relation"] = ""
                         note = "Not selected for this left term."
                     if not existing_notes:
                         df.at[idx, "notes"] = note
