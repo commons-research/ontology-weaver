@@ -38,6 +38,7 @@ STATE_LEFT_IRI = "add_terms_left_iri"
 STATE_LEFT_DEFINITION = "add_terms_left_definition"
 STATE_LEFT_COMMENT = "add_terms_left_comment"
 STATE_LEFT_EXAMPLE = "add_terms_left_example"
+STATE_PENDING_PREFILL = "add_terms_pending_prefill"
 
 TERM_REQUIRED_COLUMNS = [
     "iri",
@@ -51,6 +52,21 @@ TERM_REQUIRED_COLUMNS = [
     "range_iris",
     "parent_iris",
 ]
+
+
+def _ols_term_landing_url(ontology: str, iri: str, short_form: str = "") -> str:
+    onto = (ontology or "").strip().lower()
+    term_iri = (iri or "").strip()
+    if not onto or not term_iri:
+        return ""
+    base = (
+        f"https://www.ebi.ac.uk/ols4/ontologies/{urllib.parse.quote(onto)}/terms"
+        f"?iri={urllib.parse.quote(term_iri, safe='')}"
+    )
+    sf = (short_form or "").strip()
+    if sf:
+        return f"{base}&sf={urllib.parse.quote(sf, safe='')}"
+    return base
 
 
 def _ols_catalog() -> list[str]:
@@ -74,6 +90,7 @@ def _search_ols(
     rows: int = 8,
     timeout: float = 4.0,
     search_all: bool = False,
+    mother_only: bool = True,
 ) -> list[dict[str, str]]:
     q = query.strip()
     if not q:
@@ -92,6 +109,8 @@ def _search_ols(
         params_map = {"q": q, "rows": row_limit}
         if ontology:
             params_map["ontology"] = ontology
+        if mother_only:
+            params_map["local"] = "true"
         params = urllib.parse.urlencode(params_map)
         url = f"https://www.ebi.ac.uk/ols4/api/search?{params}"
         try:
@@ -112,6 +131,7 @@ def _search_ols(
             iri = str(doc.get("iri", "") or "").strip()
             label = str(doc.get("label", "") or "").strip()
             onto = str(doc.get("ontology_prefix", "") or ontology or "unknown").strip().lower()
+            short_form = str(doc.get("short_form", "") or "").strip()
             kind_blob = (
                 str(doc.get("entity_type", "") or "")
                 + " "
@@ -135,8 +155,13 @@ def _search_ols(
             row = {
                 "ontology": onto,
                 "iri": iri,
+                "ols_term_page": _ols_term_landing_url(onto, iri, short_form=short_form),
                 "label": label or iri,
+                "short_form": short_form,
                 "entity_kind": entity_kind,
+                "is_defining_ontology": str(
+                    doc.get("is_defining_ontology", doc.get("isDefiningOntology", ""))
+                ).strip(),
                 "definition": "",
                 "comment": "",
                 "example": "",
@@ -215,6 +240,25 @@ def _new_candidate_row(df_columns: list[str]) -> dict[str, str]:
     return {col: "" for col in df_columns}
 
 
+def _queue_source_term_prefill(
+    *,
+    iri: str,
+    label: str,
+    kind: str,
+    definition: str,
+    comment: str,
+    example: str,
+) -> None:
+    st.session_state[STATE_PENDING_PREFILL] = {
+        "iri": iri.strip(),
+        "label": label.strip(),
+        "kind": ("property" if kind.strip().lower() == "property" else "class"),
+        "definition": definition.strip(),
+        "comment": comment.strip(),
+        "example": example.strip(),
+    }
+
+
 def render() -> None:
     st.title("Add Terms")
     st.caption("Create missing source terms (class/property) and optional mapping candidates for curation.")
@@ -257,6 +301,16 @@ def render() -> None:
         st.session_state[STATE_LEFT_COMMENT] = ""
     if STATE_LEFT_EXAMPLE not in st.session_state:
         st.session_state[STATE_LEFT_EXAMPLE] = ""
+    pending_prefill = st.session_state.pop(STATE_PENDING_PREFILL, None)
+    if isinstance(pending_prefill, dict):
+        st.session_state[STATE_LEFT_IRI] = str(pending_prefill.get("iri", "") or "").strip()
+        st.session_state[STATE_LEFT_LABEL] = str(pending_prefill.get("label", "") or "").strip()
+        st.session_state[STATE_LEFT_KIND] = (
+            "property" if str(pending_prefill.get("kind", "")).strip().lower() == "property" else "class"
+        )
+        st.session_state[STATE_LEFT_DEFINITION] = str(pending_prefill.get("definition", "") or "").strip()
+        st.session_state[STATE_LEFT_COMMENT] = str(pending_prefill.get("comment", "") or "").strip()
+        st.session_state[STATE_LEFT_EXAMPLE] = str(pending_prefill.get("example", "") or "").strip()
 
     st.subheader("Fetch source term from OLS")
     ontology_options = _ols_catalog()
@@ -303,12 +357,14 @@ def render() -> None:
             if not fetched_label:
                 st.error("No term metadata found for this ontology ID + IRI.")
             else:
-                st.session_state[STATE_LEFT_IRI] = iri
-                st.session_state[STATE_LEFT_LABEL] = fetched_label
-                st.session_state[STATE_LEFT_KIND] = "property" if entity_kind == "property" else "class"
-                st.session_state[STATE_LEFT_DEFINITION] = metadata.get("definition", "").strip()
-                st.session_state[STATE_LEFT_COMMENT] = metadata.get("comment", "").strip()
-                st.session_state[STATE_LEFT_EXAMPLE] = metadata.get("example", "").strip()
+                _queue_source_term_prefill(
+                    iri=iri,
+                    label=fetched_label,
+                    kind=entity_kind,
+                    definition=metadata.get("definition", ""),
+                    comment=metadata.get("comment", ""),
+                    example=metadata.get("example", ""),
+                )
                 st.success("Source term form populated from OLS.")
                 st.rerun()
 
@@ -341,25 +397,20 @@ def render() -> None:
         left_comment = st.text_area("Comment", value=st.session_state[STATE_LEFT_COMMENT], height=84, key=STATE_LEFT_COMMENT)
         left_example = st.text_area("Example", value=st.session_state[STATE_LEFT_EXAMPLE], height=84, key=STATE_LEFT_EXAMPLE)
 
-    st.subheader("Optional mapping relation")
-    if relation_options:
-        relation_default_idx = relation_options.index("skos:exactMatch") if "skos:exactMatch" in relation_options else 0
-        selected_relation = st.selectbox(
-            "Mapping relation for added candidates",
-            options=[""] + relation_options,
-            index=(relation_default_idx + 1),
-            help="This pre-fills the relation on newly created candidate rows.",
-        )
-    else:
-        selected_relation = ""
-        st.info("No relation catalog loaded. Candidates will be added with empty relation.")
-
     st.subheader("Fetch mappings from existing ontologies")
     default_ontos = [x for x in ["chebi", "obi", "ms", "chmo", "edam"] if x in ontology_options] or ontology_options[:5]
     search_all_ontologies = st.checkbox(
         "Search across ALL OLS ontologies (slower)",
         value=False,
         help="When enabled, ontology selection is ignored and OLS global search is used.",
+    )
+    mother_only = st.checkbox(
+        "Only terms defined in source ontology (exclude imports)",
+        value=True,
+        help=(
+            "Keeps only terms where OLS marks the hit as defined by the ontology "
+            "(not imported from another ontology)."
+        ),
     )
     selected_ontologies = st.multiselect(
         "Ontologies",
@@ -384,6 +435,7 @@ def render() -> None:
             selected_ontologies,
             rows=int(rows),
             search_all=search_all_ontologies,
+            mother_only=mother_only,
         )
         st.session_state[STATE_SEARCH_RESULTS] = results
         st.session_state[STATE_SEARCH_QUERY] = search_query
@@ -411,25 +463,74 @@ def render() -> None:
             default=st.session_state.get(STATE_SELECTED_RESULTS, []),
         )
         st.session_state[STATE_SELECTED_RESULTS] = selected_labels
-        preview_df = pd.DataFrame([option_map[x] for x in selected_labels]) if selected_labels else pd.DataFrame(results)
-        display_df = preview_df.copy()
-        if "score" in display_df.columns:
-            display_df["score"] = pd.to_numeric(display_df["score"], errors="coerce")
-        st.dataframe(
-            display_df,
-            use_container_width=True,
-            hide_index=True,
-            column_config={
-                "iri": st.column_config.LinkColumn("IRI"),
-                "score": st.column_config.ProgressColumn(
-                    "Score",
-                    format="%.2f",
-                    min_value=0.0,
-                    max_value=1.0,
-                    help="Lexical similarity score used to rank results.",
-                ),
-            },
+        action_rows = [option_map[x] for x in selected_labels] if selected_labels else list(results)
+        for row in action_rows:
+            row["score"] = float(pd.to_numeric(row.get("score", ""), errors="coerce") or 0.0)
+        st.caption("Row actions")
+        header_cols = st.columns([1.4, 1.2, 2.2, 3.2, 1.3, 1.1])
+        header_cols[0].markdown("**Action**")
+        header_cols[1].markdown("**Score**")
+        header_cols[2].markdown("**Term**")
+        header_cols[3].markdown("**Label**")
+        header_cols[4].markdown("**Ontology**")
+        header_cols[5].markdown("**Kind**")
+        for idx, row in enumerate(action_rows[:50]):
+            iri = str(row.get("iri", "")).strip()
+            ontology = str(row.get("ontology", "")).strip().lower()
+            label = str(row.get("label", "")).strip() or iri
+            entity_kind = str(row.get("entity_kind", "")).strip().lower() or "class"
+            short_form = str(row.get("short_form", "")).strip()
+            term_page = str(row.get("ols_term_page", "")).strip()
+            score_value = float(row.get("score", 0.0) or 0.0)
+            row_cols = st.columns([1.4, 1.2, 2.2, 3.2, 1.3, 1.1])
+            with row_cols[0]:
+                if st.button(
+                    "Use",
+                    key=f"populate_source_term_{idx}_{short_form or iri}",
+                    disabled=not bool(iri),
+                    use_container_width=True,
+                ):
+                    metadata = _fetch_ols_metadata_for_entity(
+                        iri=iri,
+                        ontology=ontology,
+                        entity_kind=entity_kind,
+                    )
+                    _queue_source_term_prefill(
+                        iri=iri,
+                        label=metadata.get("label", "").strip() or label,
+                        kind=entity_kind,
+                        definition=metadata.get("definition", ""),
+                        comment=metadata.get("comment", ""),
+                        example=metadata.get("example", ""),
+                    )
+                    st.success(f"Populated source term form from `{short_form or label}`.")
+                    st.rerun()
+            with row_cols[1]:
+                st.progress(max(0.0, min(1.0, score_value)))
+            with row_cols[2]:
+                if term_page:
+                    st.markdown(f"[{short_form or iri}]({term_page})")
+                else:
+                    st.markdown(short_form or iri)
+            with row_cols[3]:
+                st.markdown(label)
+            with row_cols[4]:
+                st.markdown(ontology.upper())
+            with row_cols[5]:
+                st.markdown(entity_kind)
+
+    st.subheader("Optional mapping relation")
+    if relation_options:
+        relation_default_idx = relation_options.index("skos:exactMatch") if "skos:exactMatch" in relation_options else 0
+        selected_relation = st.selectbox(
+            "Mapping relation for added candidates",
+            options=[""] + relation_options,
+            index=(relation_default_idx + 1),
+            help="This pre-fills the relation on newly created candidate rows.",
         )
+    else:
+        selected_relation = ""
+        st.info("No relation catalog loaded. Candidates will be added with empty relation.")
 
     st.subheader("Create rows")
     create_placeholder = st.checkbox(
