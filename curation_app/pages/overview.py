@@ -96,10 +96,11 @@ def render() -> None:
     st.write("1. **Fetch schemas and ontologies**: maintain source manifest, download TTLs, and browse OLS catalog.")
     st.write("2. **Extract terms**: parse local TTL into term TSV with labels and metadata.")
     st.write("3. **Generate candidates**: build left-vs-right or left-vs-OLS candidate matches.")
-    st.write("4. **Curate candidates**: validate one match (or keep left term) for each left concept.")
-    st.write("5. **Review and export**: filter curated dataset and export updated source TTL.")
-    st.write("6. **View schema**: inspect ontology documentation before/after curation with pyLODE.")
-    st.write("7. **Inspect SQLite**: run table previews and SQL checks on auto-synced reconciliation tables.")
+    st.write("4. **Add terms**: create missing source classes/properties and seed mapping candidates.")
+    st.write("5. **Curate candidates**: validate one match (or keep left term) for each left concept.")
+    st.write("6. **Review and export**: filter curated dataset and export updated source TTL.")
+    st.write("7. **View schema**: inspect ontology documentation before/after curation with pyLODE.")
+    st.write("8. **Inspect SQLite**: run table previews and SQL checks on auto-synced reconciliation tables.")
 
     st.subheader("Open modules")
     c1, c2 = st.columns(2)
@@ -118,6 +119,11 @@ def render() -> None:
             "Curate candidates",
             "Curate candidates",
             "Review and validate candidate matches.",
+        )
+        _nav_button(
+            "Add terms",
+            "Add terms",
+            "Add missing source terms and create candidate mappings.",
         )
         _nav_button(
             "Inspect SQLite",

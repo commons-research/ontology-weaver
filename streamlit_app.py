@@ -7,6 +7,7 @@ import streamlit as st
 from curation_app.auto_sync import STATE_SYNC_LAST_ERROR, auto_sync_sqlite
 from curation_app.context import enabled_source_ids, load_manifest, source_context, source_ids
 from curation_app.pages import (
+    add_terms,
     curate_candidates,
     download_sources,
     extract_terms,
@@ -29,6 +30,7 @@ PAGES = {
     "OLS catalog": ols_ontologies.render,
     "Extract terms": extract_terms.render,
     "Generate candidates": generate_candidates.render,
+    "Add terms": add_terms.render,
     "Curate candidates": curate_candidates.render,
     "Review and export": finalize_validate.render,
     "View schema": view_schema.render,
@@ -44,6 +46,7 @@ PAGE_GROUPS = {
     "Alignment workflow": [
         "Extract terms",
         "Generate candidates",
+        "Add terms",
         "Curate candidates",
         "Review and export",
     ],

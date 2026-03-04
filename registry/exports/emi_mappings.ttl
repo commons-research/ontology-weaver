@@ -1,5 +1,2 @@
 # --- Generated alignment mappings (OWL/SKOS) ---
-<https://w3id.org/emi#AnatomicalEntity> <http://www.w3.org/2002/07/owl#equivalentClass> <http://purl.obolibrary.org/obo/UBERON_0001062> .
-<https://w3id.org/emi#AnatomicalEntity> <http://www.w3.org/2004/02/skos/core#exactMatch> <http://purl.obolibrary.org/obo/UBERON_0001062> .
-<https://w3id.org/emi#InChIKey> <http://www.w3.org/2002/07/owl#equivalentClass> <http://purl.obolibrary.org/obo/MS_1002894> .
-<https://w3id.org/emi#InChIKey> <http://www.w3.org/2004/02/skos/core#exactMatch> <http://purl.obolibrary.org/obo/MS_1002894> .
+<https://w3id.org/emi#ChemicalEntity> <http://www.w3.org/2002/07/owl#equivalentClass> <http://purl.obolibrary.org/obo/CHEBI_24431> .

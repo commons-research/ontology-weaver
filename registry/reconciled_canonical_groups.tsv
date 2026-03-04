@@ -1,1 +1,2 @@
 canonical_term_iri	canonical_term_label	canonical_term_source	mapped_term_count	mapped_terms	alignment_ids
+http://purl.obolibrary.org/obo/CHEBI_24431	chemical entity	CHEBI	1	EMI:https://w3id.org/emi#ChemicalEntity:Chemical entity	EMI__CAND_0004

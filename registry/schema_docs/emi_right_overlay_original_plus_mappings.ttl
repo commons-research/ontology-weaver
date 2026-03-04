@@ -5825,9 +5825,7 @@ foaf:based_near a owl:AnnotationProperty .
         owl:NamedIndividual ;
     rdfs:label "Anatomical entity"@en ;
     rdfs:comment "An anatomical entity can be an organism part (e.g. brain, blood, liver and so on) or a material anatomical entity such as a cell." ;
-    owl:equivalentClass <http://purl.obolibrary.org/obo/UBERON_0001062> ;
-    skos:closeMatch <http://purl.org/genex#AnatomicalEntity> ;
-    skos:exactMatch <http://purl.obolibrary.org/obo/UBERON_0001062> .
+    skos:closeMatch <http://purl.org/genex#AnatomicalEntity> .
 
 :BiologicalSex a owl:Class,
         owl:NamedIndividual ;
@@ -6689,7 +6687,8 @@ wd:Q27145340 rdf:type emi:Chemical ;
 
 :ChemicalEntity a owl:Class ;
     rdfs:label "Chemical entity" ;
-    rdfs:comment "A chemical entity (chemical structure or class)." .
+    rdfs:comment "A chemical entity (chemical structure or class)." ;
+    owl:equivalentClass <http://purl.obolibrary.org/obo/CHEBI_24431> .
 
 :ChemicalTaxon a owl:Class ;
     rdfs:label "Chemical taxon" ;
@@ -7271,9 +7270,7 @@ prov:Generation a owl:Class ;
             owl:onDataRange xsd:string ;
             owl:onProperty :inChIKey ;
             owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ],
-        :ChemicalStructure ;
-    owl:equivalentClass <http://purl.obolibrary.org/obo/MS_1002894> ;
-    skos:exactMatch <http://purl.obolibrary.org/obo/MS_1002894> .
+        :ChemicalStructure .
 
 :hasScore a owl:DatatypeProperty ;
     rdfs:label "has score" ;
@@ -7614,9 +7611,9 @@ prov:wasInfluencedBy a owl:ObjectProperty ;
     rdfs:label "wasInfluencedBy" ;
     rdfs:comment "This property has multiple RDFS domains to suit multiple OWL Profiles. See <a href=\"#owl-profile\">PROV-O OWL Profile</a>.",
         "Because prov:wasInfluencedBy is a broad relation, its more specific subproperties (e.g. prov:wasInformedBy, prov:actedOnBehalfOf, prov:wasEndedBy, etc.) should be used when applicable."@en ;
-    rdfs:domain _:n2766815ad49240c28351834f924e1435b41 ;
+    rdfs:domain _:n4d30348c41c94b82a6273e53edbb27c9b41 ;
     rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> ;
-    rdfs:range _:n2766815ad49240c28351834f924e1435b42 ;
+    rdfs:range _:n4d30348c41c94b82a6273e53edbb27c9b42 ;
     prov:category "qualified" ;
     prov:component "agents-responsibility" ;
     prov:editorialNote """The sub-properties of prov:wasInfluencedBy can be elaborated in more detail using the Qualification Pattern. For example, the binary relation :baking prov:used :spoon can be qualified by asserting :baking prov:qualifiedUsage [ a prov:Usage; prov:entity :spoon; prov:atLocation :kitchen ] .
@@ -7755,14 +7752,14 @@ dcterms: a owl:NamedIndividual ;
 [] a owl:Axiom ;
     owl:annotatedProperty rdfs:domain ;
     owl:annotatedSource prov:wasInfluencedBy ;
-    owl:annotatedTarget _:n2766815ad49240c28351834f924e1435b41 ;
+    owl:annotatedTarget _:n4d30348c41c94b82a6273e53edbb27c9b41 ;
     prov:definition "influencee: an identifier (o2) for an entity, activity, or agent; " ;
     prov:dm "http://www.w3.org/TR/2013/REC-prov-dm-20130430/#term-influence" .
 
 [] a owl:Axiom ;
     owl:annotatedProperty rdfs:range ;
     owl:annotatedSource prov:wasInfluencedBy ;
-    owl:annotatedTarget _:n2766815ad49240c28351834f924e1435b42 ;
+    owl:annotatedTarget _:n4d30348c41c94b82a6273e53edbb27c9b42 ;
     prov:definition "influencer: an identifier (o1) for an ancestor entity, activity, or agent that the former depends on;" ;
     prov:dm "http://www.w3.org/TR/2013/REC-prov-dm-20130430/#term-influence" .
 
@@ -7779,15 +7776,15 @@ http://www.w3.org/TR/2013/REC-prov-constraints-20130430/#term-Revision 23 April 
     owl:annotatedSource prov:wasRevisionOf ;
     owl:annotatedTarget prov:wasDerivedFrom .
 
-_:n2766815ad49240c28351834f924e1435b43 rdf:first prov:Activity ;
+_:n4d30348c41c94b82a6273e53edbb27c9b43 rdf:first prov:Activity ;
     rdf:rest ( prov:Agent prov:Entity ) .
 
-_:n2766815ad49240c28351834f924e1435b46 rdf:first prov:Activity ;
+_:n4d30348c41c94b82a6273e53edbb27c9b46 rdf:first prov:Activity ;
     rdf:rest ( prov:Agent prov:Entity ) .
 
-_:n2766815ad49240c28351834f924e1435b41 a owl:Class ;
-    owl:unionOf _:n2766815ad49240c28351834f924e1435b43 .
+_:n4d30348c41c94b82a6273e53edbb27c9b41 a owl:Class ;
+    owl:unionOf _:n4d30348c41c94b82a6273e53edbb27c9b43 .
 
-_:n2766815ad49240c28351834f924e1435b42 a owl:Class ;
-    owl:unionOf _:n2766815ad49240c28351834f924e1435b46 .
+_:n4d30348c41c94b82a6273e53edbb27c9b42 a owl:Class ;
+    owl:unionOf _:n4d30348c41c94b82a6273e53edbb27c9b46 .
 

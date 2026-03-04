@@ -543,7 +543,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "pandas", specifier = ">=2.2.0" },
-    { name = "pylode", specifier = ">=3.2.0" },
+    { name = "pylode", specifier = ">=3.2.0,<3.4.0" },
     { name = "pyvis", specifier = ">=0.3.2" },
     { name = "rdflib", specifier = ">=7.0.0" },
     { name = "streamlit", specifier = ">=1.42.0" },
@@ -807,7 +807,7 @@ wheels = [
 
 [[package]]
 name = "pylode"
-version = "3.4.1"
+version = "3.3.4"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "dominate" },
@@ -817,9 +817,9 @@ dependencies = [
     { name = "rdflib" },
     { name = "tqdm" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c9/ec/eb56353ec6bfd7020397d2a8ebbbe9d6220f33bb44af856a671522296d4a/pylode-3.4.1.tar.gz", hash = "sha256:382fe47a5b5e4c624bdd98d6bec726ed58a455d5bf9bd9b250adbc8cf516c4bc", size = 203996 }
+sdist = { url = "https://files.pythonhosted.org/packages/8e/b0/ab18c1be44e133409df5f0fcc1e911d7257c600da358cfb4c45970755d5d/pylode-3.3.4.tar.gz", hash = "sha256:9809f465a2dfa2a4e6febe9a3972de7f26f42dc888ff485a1ade5d4e9923afe4", size = 203681 }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e9/89/c22f060f2fb05eb6eb06fbc52ba097f73f968e03d13b3cd2a3607d20e316/pylode-3.4.1-py3-none-any.whl", hash = "sha256:8e9aeccf0a6e70b02e1d33f2e3d38f548c430fb8d41849e37c5b6c519e2be334", size = 218043 },
+    { url = "https://files.pythonhosted.org/packages/a7/09/b79196cc047afa943e1d95d0f528631284bf72adeccc83564ab05f10e52f/pylode-3.3.4-py3-none-any.whl", hash = "sha256:c4a28b7e89abd9024bca1236b9f5057c515a3f349ac28ae8266c5335ac7a79bc", size = 217590 },
 ]
 
 [[package]]

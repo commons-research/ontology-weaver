@@ -286,7 +286,55 @@ td {
     <script id="schema.org" type="application/ld+json">
 [
   {
-    "@id": "https://orcid.org/0000-0003-3389-2191",
+    "@id": "https://orcid.org/0000-0002-3648-7362",
+    "https://schema.org/affiliation": [
+      {
+        "@id": "https://www.unige.ch"
+      }
+    ],
+    "https://schema.org/name": [
+      {
+        "@language": "en",
+        "@value": "Arnaud Gaudry"
+      }
+    ]
+  },
+  {
+    "@id": "https://orcid.org/0000-0002-3175-5372",
+    "https://schema.org/affiliation": [
+      {
+        "@id": "https://www.sib.swiss"
+      }
+    ],
+    "https://schema.org/name": [
+      {
+        "@language": "en",
+        "@value": "Tarcisio Mendes de Farias"
+      }
+    ]
+  },
+  {
+    "@id": "https://w3id.org/emi/npc",
+    "@type": [
+      "https://schema.org/DefinedTermSet"
+    ]
+  },
+  {
+    "@id": "https://orcid.org/0000-0001-9292-9463",
+    "https://schema.org/affiliation": [
+      {
+        "@id": "https://www.sib.swiss"
+      }
+    ],
+    "https://schema.org/name": [
+      {
+        "@language": "en",
+        "@value": "Marco Pagni"
+      }
+    ]
+  },
+  {
+    "@id": "https://orcid.org/0000-0002-1269-2038",
     "https://schema.org/affiliation": [
       {
         "@id": "https://www.unifr.ch"
@@ -295,7 +343,7 @@ td {
     "https://schema.org/name": [
       {
         "@language": "en",
-        "@value": "Pierre-Marie Allard"
+        "@value": "Luca Cappelletti"
       }
     ]
   },
@@ -314,16 +362,16 @@ td {
     ]
   },
   {
-    "@id": "https://orcid.org/0000-0002-9619-1707",
+    "@id": "https://orcid.org/0000-0003-3389-2191",
     "https://schema.org/affiliation": [
       {
-        "@id": "https://www.sib.swiss"
+        "@id": "https://www.unifr.ch"
       }
     ],
     "https://schema.org/name": [
       {
         "@language": "en",
-        "@value": "Florence Mehl"
+        "@value": "Pierre-Marie Allard"
       }
     ]
   },
@@ -413,7 +461,7 @@ td {
     ]
   },
   {
-    "@id": "https://orcid.org/0000-0002-3175-5372",
+    "@id": "https://orcid.org/0000-0002-9619-1707",
     "https://schema.org/affiliation": [
       {
         "@id": "https://www.sib.swiss"
@@ -422,55 +470,7 @@ td {
     "https://schema.org/name": [
       {
         "@language": "en",
-        "@value": "Tarcisio Mendes de Farias"
-      }
-    ]
-  },
-  {
-    "@id": "https://w3id.org/emi/npc",
-    "@type": [
-      "https://schema.org/DefinedTermSet"
-    ]
-  },
-  {
-    "@id": "https://orcid.org/0000-0002-1269-2038",
-    "https://schema.org/affiliation": [
-      {
-        "@id": "https://www.unifr.ch"
-      }
-    ],
-    "https://schema.org/name": [
-      {
-        "@language": "en",
-        "@value": "Luca Cappelletti"
-      }
-    ]
-  },
-  {
-    "@id": "https://orcid.org/0000-0001-9292-9463",
-    "https://schema.org/affiliation": [
-      {
-        "@id": "https://www.sib.swiss"
-      }
-    ],
-    "https://schema.org/name": [
-      {
-        "@language": "en",
-        "@value": "Marco Pagni"
-      }
-    ]
-  },
-  {
-    "@id": "https://orcid.org/0000-0002-3648-7362",
-    "https://schema.org/affiliation": [
-      {
-        "@id": "https://www.unige.ch"
-      }
-    ],
-    "https://schema.org/name": [
-      {
-        "@language": "en",
-        "@value": "Arnaud Gaudry"
+        "@value": "Florence Mehl"
       }
     ]
   }
@@ -8730,12 +8730,7 @@ https://www.w3.org/TR/prov-o/</p></td>
               </th>
               <td>
                 <span>
-                  <a href="http://www.w3.org/ns/prov#InstantaneousEvent">Instantaneous Event</a>
-                  <sup class="sup-c" title="OWL/RDFS Class">c</sup>
-                </span>
-                <span class="cardinality">or</span>
-                <span>
-                  <a href="http://www.w3.org/ns/prov#Entity">Entity</a>
+                  <a href="http://www.w3.org/ns/prov#Agent">Agent</a>
                   <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                 </span>
                 <span class="cardinality">or</span>
@@ -8745,7 +8740,12 @@ https://www.w3.org/TR/prov-o/</p></td>
                 </span>
                 <span class="cardinality">or</span>
                 <span>
-                  <a href="http://www.w3.org/ns/prov#Agent">Agent</a>
+                  <a href="http://www.w3.org/ns/prov#InstantaneousEvent">Instantaneous Event</a>
+                  <sup class="sup-c" title="OWL/RDFS Class">c</sup>
+                </span>
+                <span class="cardinality">or</span>
+                <span>
+                  <a href="http://www.w3.org/ns/prov#Entity">Entity</a>
                   <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                 </span>
               </td>
@@ -8915,12 +8915,12 @@ https://www.w3.org/TR/prov-o/</p></td>
                   </li>
                   <li>
                     <span>
-                      <a href="http://www.w3.org/ns/prov#End">End</a>
+                      <a href="http://www.w3.org/ns/prov#Start">Start</a>
                       <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                     </span>
                     <span class="cardinality">or</span>
                     <span>
-                      <a href="http://www.w3.org/ns/prov#Delegation">Delegation</a>
+                      <a href="http://www.w3.org/ns/prov#End">End</a>
                       <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                     </span>
                     <span class="cardinality">or</span>
@@ -8930,7 +8930,7 @@ https://www.w3.org/TR/prov-o/</p></td>
                     </span>
                     <span class="cardinality">or</span>
                     <span>
-                      <a href="http://www.w3.org/ns/prov#Start">Start</a>
+                      <a href="http://www.w3.org/ns/prov#Delegation">Delegation</a>
                       <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                     </span>
                   </li>
@@ -9984,7 +9984,7 @@ https://www.w3.org/TR/prov-o/</p></td>
               </th>
               <td>
                 <span>
-                  <a href="http://www.w3.org/ns/prov#Entity">Entity</a>
+                  <a href="http://www.w3.org/ns/prov#Agent">Agent</a>
                   <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                 </span>
                 <span class="cardinality">or</span>
@@ -9994,7 +9994,7 @@ https://www.w3.org/TR/prov-o/</p></td>
                 </span>
                 <span class="cardinality">or</span>
                 <span>
-                  <a href="http://www.w3.org/ns/prov#Agent">Agent</a>
+                  <a href="http://www.w3.org/ns/prov#Entity">Entity</a>
                   <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                 </span>
               </td>
@@ -10923,12 +10923,12 @@ https://www.w3.org/TR/prov-o/</p></td>
                 </span>
                 <span class="cardinality">or</span>
                 <span>
-                  <a href="http://www.w3.org/ns/prov#Agent">Agent</a>
+                  <a href="http://www.w3.org/ns/prov#Activity">Activity</a>
                   <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                 </span>
                 <span class="cardinality">or</span>
                 <span>
-                  <a href="http://www.w3.org/ns/prov#Activity">Activity</a>
+                  <a href="http://www.w3.org/ns/prov#Agent">Agent</a>
                   <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                 </span>
               </td>
@@ -10939,17 +10939,17 @@ https://www.w3.org/TR/prov-o/</p></td>
               </th>
               <td>
                 <span>
-                  <a href="http://www.w3.org/ns/prov#Agent">Agent</a>
-                  <sup class="sup-c" title="OWL/RDFS Class">c</sup>
-                </span>
-                <span class="cardinality">or</span>
-                <span>
                   <a href="http://www.w3.org/ns/prov#Entity">Entity</a>
                   <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                 </span>
                 <span class="cardinality">or</span>
                 <span>
                   <a href="http://www.w3.org/ns/prov#Activity">Activity</a>
+                  <sup class="sup-c" title="OWL/RDFS Class">c</sup>
+                </span>
+                <span class="cardinality">or</span>
+                <span>
+                  <a href="http://www.w3.org/ns/prov#Agent">Agent</a>
                   <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                 </span>
               </td>
@@ -13014,12 +13014,12 @@ https://www.w3.org/TR/prov-o/</p></td>
               </th>
               <td>
                 <span>
-                  <a href="http://purl.uniprot.org/core/Taxon">Taxon</a>
+                  <a href="#Taxon1">Organism taxon</a>
                   <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                 </span>
                 <span class="cardinality">or</span>
                 <span>
-                  <a href="#Taxon1">Organism taxon</a>
+                  <a href="http://purl.uniprot.org/core/Taxon">Taxon</a>
                   <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                 </span>
               </td>
@@ -13141,12 +13141,12 @@ https://www.w3.org/TR/prov-o/</p></td>
               </th>
               <td>
                 <span>
-                  <a href="#SpectrumAnnotation">Spectrum annotation</a>
+                  <a href="#Chemical">Chemical</a>
                   <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                 </span>
                 <span class="cardinality">or</span>
                 <span>
-                  <a href="#Chemical">Chemical</a>
+                  <a href="#SpectrumAnnotation">Spectrum annotation</a>
                   <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                 </span>
               </td>
@@ -21422,12 +21422,12 @@ above the local reference ellipsoid).</p></td>
               </th>
               <td>
                 <span>
-                  <a href="#StructuralAnnotation">Chemical structure annotation</a>
+                  <a href="#MS2Spectrum">MS2 spectrum</a>
                   <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                 </span>
                 <span class="cardinality">or</span>
                 <span>
-                  <a href="#MS2Spectrum">MS2 spectrum</a>
+                  <a href="#StructuralAnnotation">Chemical structure annotation</a>
                   <sup class="sup-c" title="OWL/RDFS Class">c</sup>
                 </span>
               </td>
@@ -21619,9 +21619,9 @@ above the local reference ellipsoid).</p></td>
           <span id="y">y</span>
           <span>LODE</span>
         </a>
-        <a href="https://github.com/rdflib/pyLODE/release/3.4.1" id="version">3.4.1</a>
+        <a href="https://github.com/rdflib/pyLODE/release/3.3.4" id="version">3.3.4</a>
         <span> with the </span>
-        <a href="https://linked.data.gov.au/def/ontpub" id="profile">OntPub</a>
+        <a href="https://w3id.org/profile/ontpub" id="profile">OntPub</a>
         <span>profile</span>
       </p>
     </div>
