@@ -44,6 +44,13 @@ def _safe_text(value: object) -> str:
 
 def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
+    if "logs" not in out.columns:
+        if "notes" in out.columns:
+            out["logs"] = out["notes"].fillna("")
+        else:
+            out["logs"] = ""
+    if "curation_comment" not in out.columns:
+        out["curation_comment"] = ""
     for col in [
         "alignment_id",
         "left_source",
@@ -62,7 +69,8 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
         "canonical_term_source",
         "match_method",
         "suggestion_source",
-        "notes",
+        "logs",
+        "curation_comment",
     ]:
         if col not in out.columns:
             out[col] = ""
@@ -107,7 +115,7 @@ def _build_mapping_triples(df: pd.DataFrame) -> tuple[str, int, list[str]]:
         return "", 0, []
 
     triples: set[tuple[str, str, str]] = set()
-    notes: list[str] = []
+    warnings: list[str] = []
     for _, row in approved.iterrows():
         left_iri = _safe_text(row.get("left_term_iri"))
         right_iri = _canonical_target_iri(row)
@@ -184,7 +192,7 @@ def _build_mapping_triples(df: pd.DataFrame) -> tuple[str, int, list[str]]:
         triples.add((left_iri, SKOS_MAPPING_RELATION, right_iri))
 
     if not triples:
-        return "", 0, notes
+        return "", 0, warnings
 
     body = [
         "",
@@ -193,7 +201,7 @@ def _build_mapping_triples(df: pd.DataFrame) -> tuple[str, int, list[str]]:
     for s, p, o in sorted(triples):
         body.append(f"<{s}> <{p}> <{o}> .")
     body.append("")
-    return "\n".join(body), len(triples), notes
+    return "\n".join(body), len(triples), warnings
 
 
 def _canonical_target_iri(row: pd.Series) -> str:
@@ -405,18 +413,18 @@ def _apply_view(df: pd.DataFrame, view: str) -> pd.DataFrame:
             & (~df["match_method"].str.startswith("manual_", na=False))
         ]
     if view == "Original terms kept":
-        # Left terms where all rows are rejected and notes indicate keep-left decision.
+        # Left terms where all rows are rejected and logs indicate keep-left decision.
         grouped = (
             df.groupby(["left_source", "left_term_iri"], dropna=False)
             .agg(
                 all_rejected=("status", lambda s: all(_safe_text(v) == "rejected" for v in s)),
-                notes=("notes", lambda s: " | ".join(_safe_text(v) for v in s)),
+                logs=("logs", lambda s: " | ".join(_safe_text(v) for v in s)),
             )
             .reset_index()
         )
         keep_groups = grouped[
             grouped["all_rejected"]
-            & grouped["notes"].str.lower().str.contains("kept current left term", na=False)
+            & grouped["logs"].str.lower().str.contains("kept current left term", na=False)
         ][["left_source", "left_term_iri"]]
         if keep_groups.empty:
             return df.iloc[0:0]
@@ -446,7 +454,7 @@ def render() -> None:
     st.caption(f"Dataset: `{to_relpath(candidates_path)}`")
 
     view = st.selectbox("View", options=VIEW_OPTIONS, index=1)
-    token = st.text_input("Filter text (labels, notes, IRIs)", value="")
+    token = st.text_input("Filter text (labels, logs, curation comments, IRIs)", value="")
     shown = _apply_view(df, view)
     if token.strip():
         t = token.strip().lower()
@@ -459,7 +467,9 @@ def render() -> None:
             + " "
             + shown["right_term_iri"].str.lower()
             + " "
-            + shown["notes"].str.lower()
+            + shown["logs"].str.lower()
+            + " "
+            + shown["curation_comment"].str.lower()
         )
         shown = shown[hay.str.contains(t, na=False)]
 
