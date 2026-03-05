@@ -5,7 +5,7 @@
 @prefix xsd: <http://www.w3.org/2001/XMLSchema#> .
 @prefix rdfs: <http://www.w3.org/2000/01/rdf-schema#> .
 @base <https://w3id.org/emi#> .
-@prefix chebi: <http://purl.obolibrary.org/obo/> .
+@prefix cheminf: <http://semanticscience.org/resource/> .
 
 <https://w3id.org/emi> rdf:type owl:Ontology ;
                         owl:versionIRI <https://w3id.org/emi/version/1.0> ;
@@ -2096,7 +2096,7 @@ usi:mzspec%3AMSV000087728%3AVGF153_A02_features_ms2_neg.mgf%3Ascan%3A356 rdf:typ
                                          :SpectrumAnnotation
                                        )
                          ] ;
-             rdfs:range :InChIKey ;
+             rdfs:range cheminf:CHEMINF_000059 ;
              owl:propertyChainAxiom ( :hasChemicalStructure
                                       :isInChIKey2DOf
                                     ) ;
@@ -2115,7 +2115,7 @@ wd:Q27145340 rdf:type emi:Chemical ;
                rdfs:subPropertyOf owl:topObjectProperty ;
                owl:inverseOf :isInChIKey2DOf ;
                rdf:type owl:FunctionalProperty ;
-               rdfs:domain :InChIKey ;
+               rdfs:domain cheminf:CHEMINF_000059 ;
                rdfs:range :InChIKey2D ;
                <http://purl.org/vocab/vann/example> """@prefix : <https://w3id.org/emi/abox#> .
 @prefix emi: <https://w3id.org/emi#> .
@@ -2281,7 +2281,7 @@ usi:mzspec%3AMSV000087728%3AVGF153_A02_features_ms2_neg.mgf%3Ascan%3A356 rdf:typ
 :inTaxon rdf:type owl:ObjectProperty ;
          rdfs:domain [ rdf:type owl:Class ;
                        owl:unionOf ( <http://www.w3.org/ns/sosa/Sample>
-                                     :InChIKey
+                                     cheminf:CHEMINF_000059
                                      :Organism
                                    )
                      ] ;
@@ -2308,7 +2308,7 @@ usi:mzspec%3AMSV000087728%3AVGF153_A02_features_ms2_neg.mgf%3Ascan%3A356 rdf:typ
 :isInChIKey2DOf rdf:type owl:ObjectProperty ,
                          owl:InverseFunctionalProperty ;
                 rdfs:domain :InChIKey2D ;
-                rdfs:range :InChIKey ;
+                rdfs:range cheminf:CHEMINF_000059 ;
                 <http://purl.org/vocab/vann/example> """@prefix : <https://w3id.org/emi/abox#> .
 @prefix emi: <https://w3id.org/emi#> .
 @prefix wd: <http://www.wikidata.org/entity/> .
@@ -2322,7 +2322,7 @@ usi:mzspec%3AMSV000087728%3AVGF153_A02_features_ms2_neg.mgf%3Ascan%3A356 rdf:typ
 
 ###  https://w3id.org/emi#isInChIKeyOf
 :isInChIKeyOf rdf:type owl:ObjectProperty ;
-              rdfs:domain :InChIKey ;
+              rdfs:domain cheminf:CHEMINF_000059 ;
               rdfs:range [ rdf:type owl:Class ;
                            owl:unionOf ( :Chemical
                                          :SpectrumAnnotation
@@ -2835,7 +2835,7 @@ usi:mzspec%3AMSV000087728%3AVGF153_A02_features_ms2_neg.mgf%3Ascan%3A356 rdf:typ
 ###  https://w3id.org/emi#inChIKey
 :inChIKey rdf:type owl:DatatypeProperty ,
                    owl:FunctionalProperty ;
-          rdfs:domain :InChIKey ;
+          rdfs:domain cheminf:CHEMINF_000059 ;
           rdfs:range xsd:string ;
           rdfs:comment "The InChIKey data value, that is a textual representation of chemical structures. This value is composed of 27 characters and it is a condensed digital representation of the InChI." ;
           rdfs:label "InChIKey value" .
@@ -3696,7 +3696,7 @@ A Sample is intended to sample some FatureOfInterest, so there is an expectation
 
 ###  https://w3id.org/emi#Chemical
 :Chemical rdf:type owl:Class ;
-          rdfs:subClassOf chebi:CHEBI_24431 ;
+          rdfs:subClassOf cheminf:CHEMINF_000000 ;
           <http://purl.org/vocab/vann/example> """@prefix : <https://w3id.org/emi/abox#> .
 @prefix emi: <https://w3id.org/emi#> .
 @prefix wd: <http://www.wikidata.org/entity/> .
@@ -3710,21 +3710,21 @@ wd:Q27145340 rdf:type emi:Chemical ;
 
 
 ###  https://w3id.org/emi#ChemicalEntity
-chebi:CHEBI_24431 rdf:type owl:Class ;
+cheminf:CHEMINF_000000 rdf:type owl:Class ;
                 rdfs:comment "A chemical entity (chemical structure or class)." ;
                 rdfs:label "Chemical entity" .
 
 
 ###  https://w3id.org/emi#ChemicalStructure
 :ChemicalStructure rdf:type owl:Class ;
-                   rdfs:subClassOf chebi:CHEBI_24431 ;
+                   rdfs:subClassOf cheminf:CHEMINF_000000 ;
                    rdfs:comment "A representation of one or more chemical structures. This representation can be defined as molecular information encodings, compact encoding representations, chemical formulas and graphical representations." ;
                    rdfs:label "Chemical structure representation" .
 
 
 ###  https://w3id.org/emi#ChemicalTaxon
 :ChemicalTaxon rdf:type owl:Class ;
-               rdfs:subClassOf chebi:CHEBI_24431 ;
+               rdfs:subClassOf cheminf:CHEMINF_000000 ;
                rdfs:comment "As a taxonomy for chemicals such as natural products, we recommend to use the taxonomy derived from NPClassifier (i.e., https://w3id.org/emi/npc)." ;
                rdfs:label "Chemical taxon" .
 
@@ -3797,7 +3797,7 @@ chebi:CHEBI_24431 rdf:type owl:Class ;
 
 
 ###  https://w3id.org/emi#InChIKey
-:InChIKey rdf:type owl:Class ;
+cheminf:CHEMINF_000059 rdf:type owl:Class ;
           rdfs:subClassOf :ChemicalStructure ,
                           [ rdf:type owl:Restriction ;
                             owl:onProperty :inChIKey ;
@@ -3813,7 +3813,7 @@ chebi:CHEBI_24431 rdf:type owl:Class ;
             rdfs:subClassOf :ChemicalStructure ,
                             [ rdf:type owl:Restriction ;
                               owl:onProperty :isInChIKey2DOf ;
-                              owl:someValuesFrom :InChIKey
+                              owl:someValuesFrom cheminf:CHEMINF_000059
                             ] ,
                             [ rdf:type owl:Restriction ;
                               owl:onProperty :inChIKey2D ;
@@ -10869,4 +10869,5 @@ basic geo vocab
 ###  Generated by the OWL API (version 5.1.18) https://github.com/owlcs/owlapi/
 
 # --- Generated alignment mappings (OWL/SKOS) ---
-<https://w3id.org/emi#ChemicalEntity> <http://www.w3.org/2002/07/owl#equivalentClass> <http://purl.obolibrary.org/obo/CHEBI_24431> .
+<https://w3id.org/emi#ChemicalEntity> <http://www.w3.org/2002/07/owl#equivalentClass> <http://semanticscience.org/resource/CHEMINF_000000> .
+<https://w3id.org/emi#InChIKey> <http://www.w3.org/2002/07/owl#equivalentClass> <http://semanticscience.org/resource/CHEMINF_000059> .
