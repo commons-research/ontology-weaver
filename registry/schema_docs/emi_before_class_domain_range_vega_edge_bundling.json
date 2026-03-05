@@ -661,7 +661,7 @@
         {
           "source": "http://www.w3.org/ns/prov#Bundle",
           "target": "http://www.w3.org/ns/prov#Quotation",
-          "edge_class": "prov:qualifiedQuotation"
+          "edge_class": "prov:qualifiedDerivation"
         },
         {
           "source": "http://www.w3.org/ns/prov#Bundle",
@@ -686,7 +686,7 @@
         {
           "source": "http://www.w3.org/ns/prov#Communication",
           "target": "https://w3id.org/emi#Interaction",
-          "edge_class": "prov:activity"
+          "edge_class": "prov:hadActivity"
         },
         {
           "source": "http://www.w3.org/ns/prov#Delegation",
@@ -756,7 +756,7 @@
         {
           "source": "http://www.w3.org/ns/prov#EmptyCollection",
           "target": "http://www.w3.org/ns/prov#Quotation",
-          "edge_class": "prov:qualifiedQuotation"
+          "edge_class": "prov:qualifiedDerivation"
         },
         {
           "source": "http://www.w3.org/ns/prov#EmptyCollection",
@@ -806,7 +806,7 @@
         {
           "source": "http://www.w3.org/ns/prov#Generation",
           "target": "https://w3id.org/emi#Interaction",
-          "edge_class": "prov:activity"
+          "edge_class": "prov:hadActivity"
         },
         {
           "source": "http://www.w3.org/ns/prov#Invalidation",
@@ -816,7 +816,7 @@
         {
           "source": "http://www.w3.org/ns/prov#Invalidation",
           "target": "https://w3id.org/emi#Interaction",
-          "edge_class": "prov:activity"
+          "edge_class": "prov:hadActivity"
         },
         {
           "source": "http://www.w3.org/ns/prov#Organization",
@@ -861,7 +861,7 @@
         {
           "source": "http://www.w3.org/ns/prov#Plan",
           "target": "http://www.w3.org/ns/prov#Quotation",
-          "edge_class": "prov:qualifiedQuotation"
+          "edge_class": "prov:qualifiedDerivation"
         },
         {
           "source": "http://www.w3.org/ns/prov#Plan",
@@ -1076,7 +1076,7 @@
         {
           "source": "https://w3id.org/emi#Interaction",
           "target": "http://www.w3.org/ns/prov#Bundle",
-          "edge_class": "prov:generated"
+          "edge_class": "prov:wasStartedBy"
         },
         {
           "source": "https://w3id.org/emi#Interaction",
@@ -1086,7 +1086,7 @@
         {
           "source": "https://w3id.org/emi#Interaction",
           "target": "http://www.w3.org/ns/prov#EmptyCollection",
-          "edge_class": "prov:generated"
+          "edge_class": "prov:wasStartedBy"
         },
         {
           "source": "https://w3id.org/emi#Interaction",
@@ -1106,7 +1106,7 @@
         {
           "source": "https://w3id.org/emi#Interaction",
           "target": "http://www.w3.org/ns/prov#Plan",
-          "edge_class": "prov:generated"
+          "edge_class": "prov:wasStartedBy"
         },
         {
           "source": "https://w3id.org/emi#Interaction",
@@ -1171,7 +1171,7 @@
         {
           "source": "https://w3id.org/emi#LFpair",
           "target": "https://w3id.org/emi#LCMSFeature",
-          "edge_class": ":hasPairMember"
+          "edge_class": ":hasSecondMember"
         },
         {
           "source": "https://w3id.org/emi#StructuralAnnotation",

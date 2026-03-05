@@ -5,8 +5,8 @@
 @prefix dcterms: <http://purl.org/dc/terms/> .
 @prefix foaf: <http://xmlns.com/foaf/0.1/> .
 @prefix ns1: <http://schema.org/> .
-@prefix ns2: <https://w3id.org/widoco/vocab#> .
-@prefix ns3: <http://purl.org/ontology/bibo/> .
+@prefix ns2: <http://purl.org/ontology/bibo/> .
+@prefix ns3: <https://w3id.org/widoco/vocab#> .
 @prefix org: <http://www.w3.org/ns/org#> .
 @prefix owl: <http://www.w3.org/2002/07/owl#> .
 @prefix prov: <http://www.w3.org/ns/prov#> .
@@ -664,7 +664,7 @@ dcterms:valid a owl:AnnotationProperty,
     rdfs:subPropertyOf dc:date,
         dcterms:date .
 
-ns3:status a owl:AnnotationProperty .
+ns2:status a owl:AnnotationProperty .
 
 vann:example a owl:AnnotationProperty .
 
@@ -1317,7 +1317,7 @@ foaf:name a owl:AnnotationProperty .
     dcterms:publisher <https://www.earthmetabolome.org> ;
     dcterms:replaces <https://purl.org/emi/version/0.3> ;
     dcterms:title "The Earth Metabolome Initiative (EMI) ontology"@en ;
-    ns3:status <http://purl.org/ontology/bibo/status/draft> ;
+    ns2:status <http://purl.org/ontology/bibo/status/draft> ;
     vann:preferredNamespacePrefix "emi" ;
     vann:preferredNamespaceUri : ;
     ns1:codeRepository "https://github.com/earth-metabolome-initiative/earth_metabolome_ontology"^^xsd:anyURI ;
@@ -1333,7 +1333,7 @@ foaf:name a owl:AnnotationProperty .
     owl:versionIRI <https://w3id.org/emi/version/1.0> ;
     owl:versionInfo "1.0" ;
     foaf:logo <https://www.earthmetabolome.org/earth_metabolome_ontology/images/logo.png> ;
-    ns2:introduction """The Earth Metabolome Initiative (EMI) ontology replaces the Experimental Natural Products Knowledge Graph [(ENPKG) vocabulary]( https://enpkg.commons-lab.org/doc/index.html). The EMI ontology is used to structure spectrum annotation provenance by reusing the [PROV-O ontology](https://www.w3.org/TR/prov-o/) (a W3C recommendation) and sample and observation data by applying the [SOSA ontology](https://www.w3.org/TR/vocab-ssn/). EMI reuses the SOSA ontology as a data schema for struturing the Sample and Observation data. SOSA (Sensor, Observation, Sample, and Actuator) is a subset of SSN (Semantic Sensor Network Ontology) that is a W3C recommendation. Although, the SSN was developed with ontology engineers in mind as the primary audience. They addressed changes in scope and audience that currently also includes scientific observations that may make heavy use of sampling strategies, and, therefore, the Sampling, Sampler, and Sample classes, as well as their corresponding properties, have been added to SOSA and SSN. Chemical taxonomy is also highly structure in EMI by relying on a taxonomy derived from NPClassifier (i.e., EMI imports [Natural Product Classifier vocabulary](https://w3id.org/emi/npc)). This taxonomy was defined for EMI with the [SKOS vocabulary](https://www.w3.org/TR/skos-reference). Indeed, it is an SKOS-based vocabulary for the structural classification of natural products. The skos:broder term is used to represent the hierarchy among Classes, Superclasses and Pathways.  npc:Class, npc:Superclass and npc:Pathway are subclasses of skos:Concept. rdfs:label is assigned for each term of the taxonomy that are instances of one of the subclasses of skos:Concept.
+    ns3:introduction """The Earth Metabolome Initiative (EMI) ontology replaces the Experimental Natural Products Knowledge Graph [(ENPKG) vocabulary]( https://enpkg.commons-lab.org/doc/index.html). The EMI ontology is used to structure spectrum annotation provenance by reusing the [PROV-O ontology](https://www.w3.org/TR/prov-o/) (a W3C recommendation) and sample and observation data by applying the [SOSA ontology](https://www.w3.org/TR/vocab-ssn/). EMI reuses the SOSA ontology as a data schema for struturing the Sample and Observation data. SOSA (Sensor, Observation, Sample, and Actuator) is a subset of SSN (Semantic Sensor Network Ontology) that is a W3C recommendation. Although, the SSN was developed with ontology engineers in mind as the primary audience. They addressed changes in scope and audience that currently also includes scientific observations that may make heavy use of sampling strategies, and, therefore, the Sampling, Sampler, and Sample classes, as well as their corresponding properties, have been added to SOSA and SSN. Chemical taxonomy is also highly structure in EMI by relying on a taxonomy derived from NPClassifier (i.e., EMI imports [Natural Product Classifier vocabulary](https://w3id.org/emi/npc)). This taxonomy was defined for EMI with the [SKOS vocabulary](https://www.w3.org/TR/skos-reference). Indeed, it is an SKOS-based vocabulary for the structural classification of natural products. The skos:broder term is used to represent the hierarchy among Classes, Superclasses and Pathways.  npc:Class, npc:Superclass and npc:Pathway are subclasses of skos:Concept. rdfs:label is assigned for each term of the taxonomy that are instances of one of the subclasses of skos:Concept.
 
 SOSA reuse. We consider a Mass Spectrometer as a sosa:Platform. The MS detector that belongs to a Mass Spectrometer is a Sensor. If we do not want to capture the equipment (Mass Spectrometer for provenance) of the generated analysis such as by Liquid chromatography–mass spectrometry (LCMS), we can ignore/ommit it. The observation is interpreted as a prov:Activity/sosa:Observation/emi:Analysis (the Analysis as defined in the Earth Metabolome Intiative model). This observation (a.k.a. LCMS Analysis) uses (prov:use/sosa:hasFeatureOfInterest) some sample. This sample comes from some emi:System (e.g., species or another sample like a Raw Material, a broader specimen). All EMI model classes related to samples are subclasses of sosa:Sample, notably emi:Aliquot, emi:Blank, emi:ExtractSample, emi:RawMaterial and emi:QCSample.
 
@@ -5302,7 +5302,7 @@ usi:mzspec%3AMSV000087728%3AVGF153_A02_features_ms2_neg.mgf%3Ascan%3A356 rdf:typ
     rdfs:label "Zizaane sesquiterpenoids" ;
     skos:broader <https://w3id.org/emi/npc#SESQUITERPENOIDS> .
 
-ns2:introduction a owl:AnnotationProperty .
+ns3:introduction a owl:AnnotationProperty .
 
 <http://org.semanticweb.owlapi/error#Error1> a owl:Class .
 
@@ -6688,7 +6688,7 @@ wd:Q27145340 rdf:type emi:Chemical ;
 :ChemicalEntity a owl:Class ;
     rdfs:label "Chemical entity" ;
     rdfs:comment "A chemical entity (chemical structure or class)." ;
-    owl:equivalentClass <http://purl.obolibrary.org/obo/CHEBI_24431> .
+    owl:equivalentClass <http://semanticscience.org/resource/CHEMINF_000000> .
 
 :ChemicalTaxon a owl:Class ;
     rdfs:label "Chemical taxon" ;
@@ -7270,7 +7270,8 @@ prov:Generation a owl:Class ;
             owl:onDataRange xsd:string ;
             owl:onProperty :inChIKey ;
             owl:qualifiedCardinality "1"^^xsd:nonNegativeInteger ],
-        :ChemicalStructure .
+        :ChemicalStructure ;
+    owl:equivalentClass <http://semanticscience.org/resource/CHEMINF_000059> .
 
 :hasScore a owl:DatatypeProperty ;
     rdfs:label "has score" ;
@@ -7611,9 +7612,9 @@ prov:wasInfluencedBy a owl:ObjectProperty ;
     rdfs:label "wasInfluencedBy" ;
     rdfs:comment "This property has multiple RDFS domains to suit multiple OWL Profiles. See <a href=\"#owl-profile\">PROV-O OWL Profile</a>.",
         "Because prov:wasInfluencedBy is a broad relation, its more specific subproperties (e.g. prov:wasInformedBy, prov:actedOnBehalfOf, prov:wasEndedBy, etc.) should be used when applicable."@en ;
-    rdfs:domain _:n4d30348c41c94b82a6273e53edbb27c9b41 ;
+    rdfs:domain _:n6f56ac8d899548c4a37e3d5926f14164b41 ;
     rdfs:isDefinedBy <http://www.w3.org/ns/prov-o#> ;
-    rdfs:range _:n4d30348c41c94b82a6273e53edbb27c9b42 ;
+    rdfs:range _:n6f56ac8d899548c4a37e3d5926f14164b42 ;
     prov:category "qualified" ;
     prov:component "agents-responsibility" ;
     prov:editorialNote """The sub-properties of prov:wasInfluencedBy can be elaborated in more detail using the Qualification Pattern. For example, the binary relation :baking prov:used :spoon can be qualified by asserting :baking prov:qualifiedUsage [ a prov:Usage; prov:entity :spoon; prov:atLocation :kitchen ] .
@@ -7752,14 +7753,14 @@ dcterms: a owl:NamedIndividual ;
 [] a owl:Axiom ;
     owl:annotatedProperty rdfs:domain ;
     owl:annotatedSource prov:wasInfluencedBy ;
-    owl:annotatedTarget _:n4d30348c41c94b82a6273e53edbb27c9b41 ;
+    owl:annotatedTarget _:n6f56ac8d899548c4a37e3d5926f14164b41 ;
     prov:definition "influencee: an identifier (o2) for an entity, activity, or agent; " ;
     prov:dm "http://www.w3.org/TR/2013/REC-prov-dm-20130430/#term-influence" .
 
 [] a owl:Axiom ;
     owl:annotatedProperty rdfs:range ;
     owl:annotatedSource prov:wasInfluencedBy ;
-    owl:annotatedTarget _:n4d30348c41c94b82a6273e53edbb27c9b42 ;
+    owl:annotatedTarget _:n6f56ac8d899548c4a37e3d5926f14164b42 ;
     prov:definition "influencer: an identifier (o1) for an ancestor entity, activity, or agent that the former depends on;" ;
     prov:dm "http://www.w3.org/TR/2013/REC-prov-dm-20130430/#term-influence" .
 
@@ -7776,15 +7777,15 @@ http://www.w3.org/TR/2013/REC-prov-constraints-20130430/#term-Revision 23 April 
     owl:annotatedSource prov:wasRevisionOf ;
     owl:annotatedTarget prov:wasDerivedFrom .
 
-_:n4d30348c41c94b82a6273e53edbb27c9b43 rdf:first prov:Activity ;
+_:n6f56ac8d899548c4a37e3d5926f14164b43 rdf:first prov:Activity ;
     rdf:rest ( prov:Agent prov:Entity ) .
 
-_:n4d30348c41c94b82a6273e53edbb27c9b46 rdf:first prov:Activity ;
+_:n6f56ac8d899548c4a37e3d5926f14164b46 rdf:first prov:Activity ;
     rdf:rest ( prov:Agent prov:Entity ) .
 
-_:n4d30348c41c94b82a6273e53edbb27c9b41 a owl:Class ;
-    owl:unionOf _:n4d30348c41c94b82a6273e53edbb27c9b43 .
+_:n6f56ac8d899548c4a37e3d5926f14164b41 a owl:Class ;
+    owl:unionOf _:n6f56ac8d899548c4a37e3d5926f14164b43 .
 
-_:n4d30348c41c94b82a6273e53edbb27c9b42 a owl:Class ;
-    owl:unionOf _:n4d30348c41c94b82a6273e53edbb27c9b46 .
+_:n6f56ac8d899548c4a37e3d5926f14164b42 a owl:Class ;
+    owl:unionOf _:n6f56ac8d899548c4a37e3d5926f14164b46 .
 
