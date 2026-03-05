@@ -51,7 +51,8 @@ REQUIRED_COLUMNS = [
     "canonical_term_source",
     "reviewer",
     "date_reviewed",
-    "notes",
+    "logs",
+    "curation_comment",
     "ols_search_url",
     "bioportal_search_url",
     "suggestion_source",
@@ -149,6 +150,13 @@ STATE_CURATOR = "active_curator"
 
 def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
+    if "logs" not in out.columns:
+        if "notes" in out.columns:
+            out["logs"] = out["notes"].fillna("")
+        else:
+            out["logs"] = ""
+    if "curation_comment" not in out.columns:
+        out["curation_comment"] = ""
     for col in REQUIRED_COLUMNS:
         if col not in out.columns:
             out[col] = ""
@@ -182,7 +190,7 @@ def _set_review_fields(df: pd.DataFrame, idx: int, reviewer: str) -> None:
     df.at[idx, "date_reviewed"] = utc_now_timestamp()
 
 
-def _apply_approve_left(df: pd.DataFrame, idx: int, reviewer: str, relation: str, notes: str) -> None:
+def _apply_approve_left(df: pd.DataFrame, idx: int, reviewer: str, relation: str, logs: str) -> None:
     df.at[idx, "status"] = "approved"
     df.at[idx, "canonical_from"] = "left"
     df.at[idx, "canonical_term_iri"] = df.at[idx, "left_term_iri"]
@@ -190,11 +198,11 @@ def _apply_approve_left(df: pd.DataFrame, idx: int, reviewer: str, relation: str
     df.at[idx, "canonical_term_source"] = df.at[idx, "left_source"]
     df.at[idx, "relation"] = relation
     df.at[idx, "suggestion_source"] = "manual_curated"
-    df.at[idx, "notes"] = normalize_notes_for_approval(notes)
+    df.at[idx, "logs"] = normalize_notes_for_approval(logs)
     _set_review_fields(df, idx, reviewer)
 
 
-def _apply_approve_right(df: pd.DataFrame, idx: int, reviewer: str, relation: str, notes: str) -> None:
+def _apply_approve_right(df: pd.DataFrame, idx: int, reviewer: str, relation: str, logs: str) -> None:
     df.at[idx, "status"] = "approved"
     df.at[idx, "canonical_from"] = "right"
     df.at[idx, "canonical_term_iri"] = df.at[idx, "right_term_iri"]
@@ -202,7 +210,7 @@ def _apply_approve_right(df: pd.DataFrame, idx: int, reviewer: str, relation: st
     df.at[idx, "canonical_term_source"] = df.at[idx, "right_source"]
     df.at[idx, "relation"] = relation
     df.at[idx, "suggestion_source"] = "manual_curated"
-    df.at[idx, "notes"] = normalize_notes_for_approval(notes)
+    df.at[idx, "logs"] = normalize_notes_for_approval(logs)
     _set_review_fields(df, idx, reviewer)
 
 
@@ -211,7 +219,7 @@ def _apply_approve_manual(
     idx: int,
     reviewer: str,
     relation: str,
-    notes: str,
+    logs: str,
     manual_iri: str,
     manual_label: str,
     manual_source: str,
@@ -226,19 +234,31 @@ def _apply_approve_manual(
     df.at[idx, "canonical_term_source"] = manual_source.strip()
     df.at[idx, "relation"] = relation
     df.at[idx, "suggestion_source"] = "manual_curated"
-    df.at[idx, "notes"] = normalize_notes_for_approval(notes)
+    df.at[idx, "logs"] = normalize_notes_for_approval(logs)
     _set_review_fields(df, idx, reviewer)
     return True
 
 
-def _apply_reject(df: pd.DataFrame, idx: int, reviewer: str, notes: str) -> None:
+def _apply_reject(df: pd.DataFrame, idx: int, reviewer: str, logs: str) -> None:
     df.at[idx, "status"] = "rejected"
     df.at[idx, "canonical_from"] = ""
     df.at[idx, "canonical_term_iri"] = ""
     df.at[idx, "canonical_term_label"] = ""
     df.at[idx, "canonical_term_source"] = ""
-    df.at[idx, "notes"] = notes.strip()
+    df.at[idx, "logs"] = logs.strip()
     _set_review_fields(df, idx, reviewer)
+
+
+def _append_log(existing_log: str, new_log: str) -> str:
+    existing = existing_log.strip()
+    entry = new_log.strip()
+    if not entry:
+        return existing
+    if not existing:
+        return entry
+    if entry.lower() in existing.lower():
+        return existing
+    return f"{existing} | {entry}"
 
 
 def _filtered_df(df: pd.DataFrame, statuses: list[str], search: str) -> pd.DataFrame:
@@ -255,7 +275,9 @@ def _filtered_df(df: pd.DataFrame, statuses: list[str], search: str) -> pd.DataF
             + " "
             + out["right_label"].str.lower()
             + " "
-            + out["notes"].str.lower()
+            + out["logs"].str.lower()
+            + " "
+            + out["curation_comment"].str.lower()
         )
         out = out[haystack.str.contains(token, na=False)]
     return out
@@ -1251,7 +1273,7 @@ def render() -> None:
         options=available_statuses,
         default=default_statuses,
     )
-    search_text = st.text_input("Search (left/right labels, notes)", value="")
+    search_text = st.text_input("Search (left/right labels, logs, curation comments)", value="")
 
     filtered = _filtered_df(df, selected_statuses, search_text)
     st.caption(f"Filtered rows: {len(filtered)}")
@@ -1581,9 +1603,10 @@ def render() -> None:
                         new_row["curator"] = "auto"
                         new_row["reviewer"] = active_curator
                         new_row["date_reviewed"] = ""
-                        new_row["notes"] = (
+                        new_row["logs"] = (
                             f"Manual {entity_kind} candidate added by URL with ontology id '{ontology_id}'."
                         )
+                        new_row["curation_comment"] = ""
                         if "normalized_left_label" in df.columns:
                             new_row["normalized_left_label"] = str(left_label).strip().lower()
                         if "normalized_right_label" in df.columns:
@@ -1613,25 +1636,36 @@ def render() -> None:
                     f"`{_display_kind(selected_left_kind)}`."
                 )
 
-        action_cols = st.columns(2)
-        if action_cols[0].button("Validate selection", type="primary", disabled=not decision_made):
+        st.markdown("**Curation comment**")
+        curation_comment = st.text_area(
+            "curation_comment (optional)",
+            value="",
+            key=f"curation_comment_{left_term_key}",
+            help="Saved separately from automated logs for this validation step.",
+        )
+        validate_col = st.columns([1, 2, 1])[1]
+        if validate_col.button(
+            "Validate",
+            key=f"validate_selection_{left_term_key}",
+            type="primary",
+            disabled=not decision_made,
+            use_container_width=True,
+        ):
             if left_is_kept:
                 if not group_df.empty:
                     mask = (df["left_source"] == left_source) & (df["left_term_iri"] == left_iri)
                     idxs = df.index[mask].tolist()
                     for idx in idxs:
-                        existing_notes = str(df.at[idx, "notes"] or "").strip()
-                        note = "Kept current left term; rejected right-side candidate matches."
+                        existing_logs = str(df.at[idx, "logs"] or "").strip()
+                        log_entry = "Kept current left term; rejected right-side candidate matches."
                         df.at[idx, "status"] = "rejected"
                         df.at[idx, "canonical_from"] = ""
                         df.at[idx, "canonical_term_iri"] = ""
                         df.at[idx, "canonical_term_label"] = ""
                         df.at[idx, "canonical_term_source"] = ""
                         df.at[idx, "relation"] = ""
-                        if not existing_notes:
-                            df.at[idx, "notes"] = note
-                        elif note.lower() not in existing_notes.lower():
-                            df.at[idx, "notes"] = f"{existing_notes} | {note}"
+                        df.at[idx, "logs"] = _append_log(existing_logs, log_entry)
+                        df.at[idx, "curation_comment"] = curation_comment.strip()
                         df.at[idx, "date_reviewed"] = utc_now_timestamp()
                         if active_curator:
                             df.at[idx, "reviewer"] = active_curator
@@ -1644,7 +1678,7 @@ def render() -> None:
                 mask = (df["left_source"] == left_source) & (df["left_term_iri"] == left_iri)
                 idxs = df.index[mask].tolist()
                 for idx in idxs:
-                    existing_notes = str(df.at[idx, "notes"] or "").strip()
+                    existing_logs = str(df.at[idx, "logs"] or "").strip()
                     if idx == row_idx:
                         df.at[idx, "status"] = "approved"
                         df.at[idx, "canonical_from"] = "right"
@@ -1653,7 +1687,7 @@ def render() -> None:
                         df.at[idx, "canonical_term_source"] = df.at[idx, "right_source"]
                         df.at[idx, "relation"] = selected_mapping_relation if mapping_relation_selected else ""
                         df.at[idx, "suggestion_source"] = "manual_curated"
-                        note = "Validated selected right-side match."
+                        log_entry = "Validated selected right-side match."
                     else:
                         df.at[idx, "status"] = "rejected"
                         df.at[idx, "canonical_from"] = ""
@@ -1661,11 +1695,9 @@ def render() -> None:
                         df.at[idx, "canonical_term_label"] = ""
                         df.at[idx, "canonical_term_source"] = ""
                         df.at[idx, "relation"] = ""
-                        note = "Not selected for this left term."
-                    if not existing_notes:
-                        df.at[idx, "notes"] = note
-                    elif note.lower() not in existing_notes.lower():
-                        df.at[idx, "notes"] = f"{existing_notes} | {note}"
+                        log_entry = "Not selected for this left term."
+                    df.at[idx, "logs"] = _append_log(existing_logs, log_entry)
+                    df.at[idx, "curation_comment"] = curation_comment.strip()
                     df.at[idx, "date_reviewed"] = utc_now_timestamp()
                     if active_curator:
                         df.at[idx, "reviewer"] = active_curator
@@ -1677,7 +1709,8 @@ def render() -> None:
                 st.session_state[STATE_SELECTED_ALIGNMENT] = ""
                 st.rerun()
 
-        if action_cols[1].button("Skip term"):
+        skip_col = st.columns([1, 2, 1])[1]
+        if skip_col.button("Skip term", key=f"skip_term_{left_term_key}", use_container_width=True):
             st.session_state[STATE_LEFT_TERM_INDEX] = min(selected_idx + 1, len(left_keys) - 1)
             st.session_state[STATE_SELECTED_ALIGNMENT] = ""
             st.rerun()
