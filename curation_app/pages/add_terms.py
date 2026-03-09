@@ -18,6 +18,7 @@ from curation_app.pages.curate_candidates import (
     _bioportal_search_url,
     _ensure_columns,
     _fetch_ols_metadata_for_entity,
+    _infer_ols_entity_kind,
     _load_mapping_relations_from_local_ontologies,
     _lookup_ols_hit_by_iri,
     _manual_match_score,
@@ -133,19 +134,16 @@ def _search_ols(
             label = str(doc.get("label", "") or "").strip()
             onto = str(doc.get("ontology_prefix", "") or ontology or "unknown").strip().lower()
             short_form = str(doc.get("short_form", "") or "").strip()
-            kind_blob = (
-                str(doc.get("entity_type", "") or "")
-                + " "
-                + str(doc.get("type", "") or "")
-                + " "
-                + str(doc.get("semantic_type", "") or "")
-            ).lower()
-            if "property" in kind_blob:
-                entity_kind = "property"
-            elif "individual" in kind_blob:
-                entity_kind = "individual"
-            else:
-                entity_kind = "class"
+            entity_kind = (
+                _infer_ols_entity_kind(
+                    doc.get("entity_type"),
+                    doc.get("entityType"),
+                    doc.get("type"),
+                    doc.get("semantic_type"),
+                    doc.get("semanticType"),
+                )
+                or "class"
+            )
             if not iri:
                 continue
             score = _manual_match_score(q, label or iri, left_kind="", right_kind=entity_kind)
