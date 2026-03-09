@@ -40,6 +40,32 @@ jobs:
           uv run python scripts/validate_pair_alignments.py registry/pair_alignment_candidates_emi.tsv --kind candidate
           uv run python scripts/validate_pair_alignments.py registry/pair_alignment_candidates_enpkg.tsv --kind candidate
 
+      - name: Download source TTLs
+        run: |
+          uv run python scripts/download_external_sources.py --all --force
+          mkdir -p .ci_exports/downloads
+          cp registry/downloads/emi.ttl .ci_exports/downloads/emi.ttl
+          cp registry/downloads/enpkg.ttl .ci_exports/downloads/enpkg.ttl
+
+      - name: Generate and validate enriched TTL exports
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .ci_exports/exports
+          for source in emi enpkg; do
+            uv run python scripts/export_updated_ttl.py \
+              --ledger "registry/pair_alignment_candidates_${source}.tsv" \
+              --source-ttl "registry/downloads/${source}.ttl" \
+              --output ".ci_exports/exports/${source}_updated.ttl" \
+              --mapping-output ".ci_exports/exports/${source}_mappings.ttl"
+          done
+
+      - name: Upload TTL export artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ttl-exports
+          path: .ci_exports
+
       - name: Smoke-test SQLite sync and reconciled exports
         shell: bash
         run: |
