@@ -577,12 +577,19 @@ def _short_iri(graph: Graph, iri: URIRef) -> str:
         return ":" + text.rsplit("#", 1)[-1]
     if text.startswith("http://www.w3.org/ns/prov#"):
         return "prov:" + text.rsplit("#", 1)[-1]
-    if text.startswith("http://purl.obolibrary.org/obo/"):
-        return "obo:" + text.rsplit("/", 1)[-1]
+    match = re.match(r"^https?://purl\.obolibrary\.org/obo/([A-Za-z][A-Za-z0-9]*)_(.+)$", text)
+    if match:
+        return f"{match.group(1).lower()}:{match.group(2)}"
+    match = re.match(r"^https?://semanticscience\.org/resource/([A-Za-z][A-Za-z0-9]*)_(.+)$", text)
+    if match:
+        return f"{match.group(1).lower()}:{match.group(2)}"
     try:
-        return graph.namespace_manager.normalizeUri(iri)
+        normalized = graph.namespace_manager.normalizeUri(iri)
+        if normalized and normalized != text and not normalized.startswith("<"):
+            return normalized
     except Exception:
-        return text
+        pass
+    return text
 
 
 def _build_graph_html(input_ttl: Path, output_html: Path, max_nodes: int, node_scale: float = 1.0, search_query: str = "") -> tuple[bool, str]:
@@ -808,6 +815,9 @@ def _build_mermaid(
             lines.append(f'  {nid}["{label}"]')
     for s1, o1, elabel in edge_rows:
         lines.append(f'  {node_ids[s1]} -->|{elabel}| {node_ids[o1]}')
+    for n in nodes:
+        iri = str(n).replace('"', "%22")
+        lines.append(f'  click {node_ids[n]} href "{iri}" "Open IRI" _blank')
 
     text = "\n".join(lines) + "\n"
     if focus_node is not None:

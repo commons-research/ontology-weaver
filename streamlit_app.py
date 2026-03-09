@@ -87,6 +87,7 @@ def main() -> None:
             value=curator_value,
             help="Enter a valid ORCID iD. The public name is fetched automatically from ORCID.",
         )
+        st.sidebar.markdown("[Find your ORCID](https://orcid.org/orcid-search/search)")
         st.session_state[STATE_CURATOR_INPUT] = curator_input.strip()
         normalized_orcid = normalize_orcid(curator_input)
         if curator_input.strip():
