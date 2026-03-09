@@ -31,6 +31,7 @@ RELATION_VALUES = {
     "related",
     "owl:equivalentClass",
     "owl:equivalentProperty",
+    "owl:sameAs",
     "rdfs:subClassOf",
     "rdfs:subPropertyOf",
     "skos:exactMatch",

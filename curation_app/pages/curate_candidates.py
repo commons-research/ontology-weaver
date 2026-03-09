@@ -81,6 +81,11 @@ MAPPING_GUIDANCE: dict[str, dict[str, str]] = {
         "when": "Use when both terms are properties with the same intended semantics.",
         "example": "ex:birthDate owl:equivalentProperty schema:birthDate",
     },
+    "owl:sameAs": {
+        "tier": "recommended",
+        "when": "Use when both named individuals denote the same real-world entity.",
+        "example": "ex:EntityA owl:sameAs ex:EntityB",
+    },
     "rdfs:subClassOf": {
         "tier": "recommended",
         "when": "Use when source class is narrower than target class.",
@@ -131,6 +136,7 @@ MAPPING_GUIDANCE: dict[str, dict[str, str]] = {
 MAPPING_GUIDANCE_ORDER = [
     "owl:equivalentClass",
     "owl:equivalentProperty",
+    "owl:sameAs",
     "rdfs:subClassOf",
     "rdfs:subPropertyOf",
     "skos:exactMatch",
@@ -435,6 +441,15 @@ def _normalize_kind(value: object) -> str:
     if kind in {"class", "property", "individual"}:
         return kind
     return ""
+
+
+def _self_canonical_relation(kind: object) -> str:
+    normalized = _normalize_kind(kind)
+    if normalized == "class":
+        return "owl:equivalentClass"
+    if normalized == "property":
+        return "owl:equivalentProperty"
+    return "owl:sameAs"
 
 
 def _derived_export_mapping_labels(relation: str, left_kind: object, right_kind: object) -> list[str]:
@@ -1648,10 +1663,9 @@ def render() -> None:
                         st.session_state[STATE_KEPT_LEFT_TERMS] = sorted(kept_left_terms)
                         st.success("Manual candidate added.")
                         st.rerun()
-        if mapping_relation_selected:
-            decision_made = row is not None and row_idx is not None
-        else:
-            decision_made = left_is_kept or (row is not None and row_idx is not None)
+        decision_made = left_is_kept or (
+            row is not None and row_idx is not None and mapping_relation_selected
+        )
         if row is not None:
             selected_left_kind = left_row_series.get("left_term_kind", "")
             selected_right_kind = row.get("right_term_kind", "")
@@ -1678,19 +1692,59 @@ def render() -> None:
             use_container_width=True,
         ):
             if left_is_kept:
-                if not group_df.empty:
-                    mask = (df["left_source"] == left_source) & (df["left_term_iri"] == left_iri)
-                    idxs = df.index[mask].tolist()
+                mask = (df["left_source"] == left_source) & (df["left_term_iri"] == left_iri)
+                idxs = df.index[mask].tolist()
+                carrier_idx = idxs[0] if idxs else None
+                if carrier_idx is None:
+                    new_row = {col: "" for col in df.columns}
+                    new_row["alignment_id"] = _next_alignment_id(df)
+                    new_row["left_source"] = left_source
+                    new_row["left_term_iri"] = left_iri
+                    new_row["left_label"] = left_label
+                    new_row["left_definition"] = str(left_row_series.get("left_definition", "") or "")
+                    new_row["left_comment"] = str(left_row_series.get("left_comment", "") or "")
+                    new_row["left_example"] = str(left_row_series.get("left_example", "") or "")
+                    new_row["left_term_kind"] = str(left_row_series.get("left_term_kind", "") or "")
+                    new_row["status"] = "approved"
+                    new_row["canonical_from"] = "left"
+                    new_row["canonical_term_iri"] = left_iri
+                    new_row["canonical_term_label"] = left_label
+                    new_row["canonical_term_source"] = left_source
+                    new_row["canonical_term_kind"] = str(left_row_series.get("left_term_kind", "") or "")
+                    new_row["relation"] = _self_canonical_relation(left_row_series.get("left_term_kind", ""))
+                    new_row["suggestion_source"] = "manual_curated"
+                    new_row["curator"] = "auto"
+                    new_row["curator_name"] = ""
+                    new_row["reviewer"] = active_curator
+                    new_row["reviewer_name"] = active_curator_name
+                    new_row["date_added"] = utc_now_timestamp()
+                    new_row["date_reviewed"] = utc_now_timestamp()
+                    new_row["logs"] = "Kept current source term; recorded source term as canonical."
+                    new_row["curation_comment"] = curation_comment.strip()
+                    df = pd.concat([df, pd.DataFrame([new_row], columns=df.columns)], ignore_index=True)
+                    st.session_state[STATE_DF] = df
+                else:
                     for idx in idxs:
                         existing_logs = str(df.at[idx, "logs"] or "").strip()
-                        log_entry = "Kept current left term; rejected right-side candidate matches."
-                        df.at[idx, "status"] = "rejected"
-                        df.at[idx, "canonical_from"] = ""
-                        df.at[idx, "canonical_term_iri"] = ""
-                        df.at[idx, "canonical_term_label"] = ""
-                        df.at[idx, "canonical_term_source"] = ""
-                        df.at[idx, "canonical_term_kind"] = ""
-                        df.at[idx, "relation"] = ""
+                        if idx == carrier_idx:
+                            df.at[idx, "status"] = "approved"
+                            df.at[idx, "canonical_from"] = "left"
+                            df.at[idx, "canonical_term_iri"] = df.at[idx, "left_term_iri"]
+                            df.at[idx, "canonical_term_label"] = df.at[idx, "left_label"]
+                            df.at[idx, "canonical_term_source"] = df.at[idx, "left_source"]
+                            df.at[idx, "canonical_term_kind"] = df.at[idx, "left_term_kind"]
+                            df.at[idx, "relation"] = _self_canonical_relation(df.at[idx, "left_term_kind"])
+                            df.at[idx, "suggestion_source"] = "manual_curated"
+                            log_entry = "Kept current source term; recorded source term as canonical."
+                        else:
+                            df.at[idx, "status"] = "rejected"
+                            df.at[idx, "canonical_from"] = ""
+                            df.at[idx, "canonical_term_iri"] = ""
+                            df.at[idx, "canonical_term_label"] = ""
+                            df.at[idx, "canonical_term_source"] = ""
+                            df.at[idx, "canonical_term_kind"] = ""
+                            df.at[idx, "relation"] = ""
+                            log_entry = "Not selected for this source term."
                         df.at[idx, "logs"] = _append_log(existing_logs, log_entry)
                         df.at[idx, "curation_comment"] = curation_comment.strip()
                         df.at[idx, "date_reviewed"] = utc_now_timestamp()
