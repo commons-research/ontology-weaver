@@ -1299,8 +1299,9 @@ def render() -> None:
     curated_terms = max(0, total_terms - needs_review_terms)
     progress = (curated_terms / total_terms) if total_terms else 0.0
 
-    st.subheader("Curation Progress")
-    st.progress(progress, text=f"{curated_terms}/{total_terms} terms curated ({progress * 100:.1f}%)")
+    st.subheader("Local Queue Progress")
+    st.caption("Counts source terms in the local queue that no longer have any `needs_review` rows.")
+    st.progress(progress, text=f"{curated_terms}/{total_terms} term(s) processed locally ({progress * 100:.1f}%)")
 
     st.subheader("Filter")
     available_statuses = sorted(df["status"].dropna().unique().tolist())

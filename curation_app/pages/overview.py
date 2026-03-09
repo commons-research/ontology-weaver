@@ -88,14 +88,14 @@ def render() -> None:
         st.info("No sources found in manifest yet.")
     else:
         render_clickable_dataframe(metrics_df, use_container_width=True, hide_index=True)
-        st.subheader("Curation progress by schema")
+        st.subheader("Shared Approved Coverage")
         for _, row in metrics_df.iterrows():
             source = str(row.get("Source", "") or "-")
             curated = int(row.get("Terms reviewed", 0) or 0)
             total = int(row.get("Terms loaded", 0) or 0)
             pct = (curated / total) if total else 0.0
             st.write(f"**{source}**")
-            st.progress(pct, text=f"{curated}/{total} reviewed term(s) in shared ledger")
+            st.progress(pct, text=f"{curated}/{total} source term(s) approved in shared ledger")
 
     st.subheader("Recommended flow")
     st.write("1. **Fetch schemas and ontologies**: maintain source manifest, download TTLs, and browse OLS catalog.")
