@@ -12,19 +12,12 @@ import sys
 import tempfile
 from pathlib import Path
 
-import pandas as pd
-
 REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from curation_app.pages.finalize_validate import (
-    _build_mapping_triples,
-    _build_replacements,
-    _compact_ttl_iris_with_prefixes,
-    _ensure_columns,
-)
-from curation_app.pages.view_schema import _build_mermaid, _write_merged_ttl
+from curation_app.pages.view_schema import _build_mermaid
+from scripts.export_updated_ttl import build_exports_for_ledger
 
 MARKER = "<!-- pr-mermaid-review -->"
 LEDGER_PATTERN = re.compile(r"^registry/pair_alignment_candidates_([A-Za-z0-9_.-]+)\.tsv$")
@@ -134,21 +127,17 @@ def build_overlay_ttl(source_slug: str, tmpdir: Path) -> tuple[Path, Path]:
     if not source_ttl_path.is_file():
         raise FileNotFoundError(source_ttl_path)
 
-    df = _ensure_columns(pd.read_csv(ledger_path, sep="\t").fillna(""))
-    replacements, _ = _build_replacements(df)
-    mapping_ttl_text, _, _ = _build_mapping_triples(df)
+    updated_ttl_text, mapping_ttl_text = build_exports_for_ledger(
+        ledger_path=ledger_path,
+        source_ttl_path=source_ttl_path,
+        statuses=["approved"],
+    )
 
     mapping_path = tmpdir / f"{source_slug}_mappings.ttl"
-    if mapping_ttl_text.strip():
-        compact_mapping_text, _ = _compact_ttl_iris_with_prefixes(mapping_ttl_text, df, replacements)
-        mapping_path.write_text(compact_mapping_text.strip() + "\n", encoding="utf-8")
-    else:
-        mapping_path.write_text("", encoding="utf-8")
+    mapping_path.write_text(mapping_ttl_text, encoding="utf-8")
 
-    overlay_path = tmpdir / f"{source_slug}_overlay.ttl"
-    ok, msg = _write_merged_ttl([source_ttl_path, mapping_path], overlay_path)
-    if not ok:
-        raise RuntimeError(msg)
+    overlay_path = tmpdir / f"{source_slug}_updated.ttl"
+    overlay_path.write_text(updated_ttl_text, encoding="utf-8")
     return source_ttl_path, overlay_path
 
 
@@ -272,10 +261,10 @@ def generate_term_section(
     after_render = after_graph
     if before_render.strip() == "flowchart LR" or not before_render.strip():
         before_render = single_node_mermaid(source_iri, source_label)
-        left_msg = f"{left_msg} Rendered isolated source-term fallback node."
+        left_msg = f"{left_msg} Rendered isolated source-term graph from the downloaded source TTL."
     if after_render.strip() == "flowchart LR" or not after_render.strip():
         after_render = single_node_mermaid(source_iri, source_label)
-        right_msg = f"{right_msg} Rendered isolated source-term fallback node."
+        right_msg = f"{right_msg} Rendered isolated source-term graph from the enriched exported TTL."
 
     if left_ok and right_ok:
         combined = combine_mermaid(before_render, after_render)
