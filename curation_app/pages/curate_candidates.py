@@ -50,6 +50,7 @@ REQUIRED_COLUMNS = [
     "canonical_term_iri",
     "canonical_term_label",
     "canonical_term_source",
+    "canonical_term_kind",
     "reviewer",
     "reviewer_name",
     "curator_name",
@@ -210,6 +211,7 @@ def _apply_approve_left(df: pd.DataFrame, idx: int, reviewer: str, relation: str
     df.at[idx, "canonical_term_iri"] = df.at[idx, "left_term_iri"]
     df.at[idx, "canonical_term_label"] = df.at[idx, "left_label"]
     df.at[idx, "canonical_term_source"] = df.at[idx, "left_source"]
+    df.at[idx, "canonical_term_kind"] = df.at[idx, "left_term_kind"]
     df.at[idx, "relation"] = relation
     df.at[idx, "suggestion_source"] = "manual_curated"
     df.at[idx, "logs"] = normalize_notes_for_approval(logs)
@@ -222,6 +224,7 @@ def _apply_approve_right(df: pd.DataFrame, idx: int, reviewer: str, relation: st
     df.at[idx, "canonical_term_iri"] = df.at[idx, "right_term_iri"]
     df.at[idx, "canonical_term_label"] = df.at[idx, "right_label"]
     df.at[idx, "canonical_term_source"] = df.at[idx, "right_source"]
+    df.at[idx, "canonical_term_kind"] = df.at[idx, "right_term_kind"]
     df.at[idx, "relation"] = relation
     df.at[idx, "suggestion_source"] = "manual_curated"
     df.at[idx, "logs"] = normalize_notes_for_approval(logs)
@@ -237,8 +240,9 @@ def _apply_approve_manual(
     manual_iri: str,
     manual_label: str,
     manual_source: str,
+    manual_kind: str,
 ) -> bool:
-    if not (manual_iri.strip() and manual_label.strip() and manual_source.strip()):
+    if not (manual_iri.strip() and manual_label.strip() and manual_source.strip() and manual_kind.strip()):
         return False
 
     df.at[idx, "status"] = "approved"
@@ -246,6 +250,7 @@ def _apply_approve_manual(
     df.at[idx, "canonical_term_iri"] = manual_iri.strip()
     df.at[idx, "canonical_term_label"] = manual_label.strip()
     df.at[idx, "canonical_term_source"] = manual_source.strip()
+    df.at[idx, "canonical_term_kind"] = manual_kind.strip()
     df.at[idx, "relation"] = relation
     df.at[idx, "suggestion_source"] = "manual_curated"
     df.at[idx, "logs"] = normalize_notes_for_approval(logs)
@@ -259,6 +264,7 @@ def _apply_reject(df: pd.DataFrame, idx: int, reviewer: str, logs: str) -> None:
     df.at[idx, "canonical_term_iri"] = ""
     df.at[idx, "canonical_term_label"] = ""
     df.at[idx, "canonical_term_source"] = ""
+    df.at[idx, "canonical_term_kind"] = ""
     df.at[idx, "logs"] = logs.strip()
     _set_review_fields(df, idx, reviewer)
 
@@ -1613,6 +1619,7 @@ def render() -> None:
                         new_row["canonical_term_iri"] = ""
                         new_row["canonical_term_label"] = ""
                         new_row["canonical_term_source"] = ""
+                        new_row["canonical_term_kind"] = ""
                         new_row["ols_search_url"] = _ols_search_url(left_label)
                         new_row["bioportal_search_url"] = _bioportal_search_url(left_label)
                         new_row["status"] = "needs_review"
@@ -1682,6 +1689,7 @@ def render() -> None:
                         df.at[idx, "canonical_term_iri"] = ""
                         df.at[idx, "canonical_term_label"] = ""
                         df.at[idx, "canonical_term_source"] = ""
+                        df.at[idx, "canonical_term_kind"] = ""
                         df.at[idx, "relation"] = ""
                         df.at[idx, "logs"] = _append_log(existing_logs, log_entry)
                         df.at[idx, "curation_comment"] = curation_comment.strip()
@@ -1705,6 +1713,7 @@ def render() -> None:
                         df.at[idx, "canonical_term_iri"] = df.at[idx, "right_term_iri"]
                         df.at[idx, "canonical_term_label"] = df.at[idx, "right_label"]
                         df.at[idx, "canonical_term_source"] = df.at[idx, "right_source"]
+                        df.at[idx, "canonical_term_kind"] = df.at[idx, "right_term_kind"]
                         df.at[idx, "relation"] = selected_mapping_relation if mapping_relation_selected else ""
                         df.at[idx, "suggestion_source"] = "manual_curated"
                         log_entry = "Validated selected right-side match."
@@ -1714,6 +1723,7 @@ def render() -> None:
                         df.at[idx, "canonical_term_iri"] = ""
                         df.at[idx, "canonical_term_label"] = ""
                         df.at[idx, "canonical_term_source"] = ""
+                        df.at[idx, "canonical_term_kind"] = ""
                         df.at[idx, "relation"] = ""
                         log_entry = "Not selected for this left term."
                     df.at[idx, "logs"] = _append_log(existing_logs, log_entry)

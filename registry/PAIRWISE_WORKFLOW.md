@@ -7,6 +7,26 @@ Keep one review TSV per schema in Git:
 
 - `registry/pair_alignment_candidates_<source>.tsv`
 
+This shared ledger is intentionally minimal. It stores only approved source-to-canonical mappings plus review provenance:
+
+- `alignment_id`
+- `source_term_source`
+- `source_term_iri`
+- `source_term_label`
+- `source_term_kind`
+- `canonical_term_iri`
+- `canonical_term_label`
+- `canonical_term_source`
+- `canonical_term_kind`
+- `relation`
+- `status`
+- `curator`
+- `curator_name`
+- `reviewer`
+- `reviewer_name`
+- `date_reviewed`
+- `curation_comment`
+
 Keep the local queue outside Git:
 
 - `registry/work/pair_alignment_candidates_<source>.tsv`
@@ -94,6 +114,7 @@ Open `registry/work/pair_alignment_candidates_emi.tsv` and curate rows there:
   - `canonical_term_iri`
   - `canonical_term_label`
   - `canonical_term_source`
+  - `canonical_term_kind`
 
 Optional:
 - set `reviewer` to a valid ORCID

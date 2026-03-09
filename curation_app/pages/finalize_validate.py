@@ -18,10 +18,8 @@ from curation_app.helpers import (
 
 VIEW_OPTIONS = [
     "All rows",
-    "Reviewed rows (not needs_review)",
-    "Automatically matched and manually validated",
-    "Original terms kept",
-    "Manually added terms",
+    "Approved mappings",
+    "Recently reviewed",
 ]
 
 OWL_EQUIVALENT_CLASS = "http://www.w3.org/2002/07/owl#equivalentClass"
@@ -53,13 +51,13 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
         out["curation_comment"] = ""
     for col in [
         "alignment_id",
-        "left_source",
-        "left_term_iri",
-        "left_label",
+        "source_term_source",
+        "source_term_iri",
+        "source_term_label",
         "right_source",
         "right_term_iri",
         "right_label",
-        "left_term_kind",
+        "source_term_kind",
         "right_term_kind",
         "relation",
         "status",
@@ -67,6 +65,7 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
         "canonical_term_iri",
         "canonical_term_label",
         "canonical_term_source",
+        "canonical_term_kind",
         "match_method",
         "suggestion_source",
         "logs",
@@ -74,6 +73,14 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     ]:
         if col not in out.columns:
             out[col] = ""
+    if "left_source" not in out.columns:
+        out["left_source"] = out["source_term_source"]
+    if "left_term_iri" not in out.columns:
+        out["left_term_iri"] = out["source_term_iri"]
+    if "left_label" not in out.columns:
+        out["left_label"] = out["source_term_label"]
+    if "left_term_kind" not in out.columns:
+        out["left_term_kind"] = out["source_term_kind"]
     return out
 
 
@@ -126,8 +133,8 @@ def _build_mapping_triples(df: pd.DataFrame) -> tuple[str, int, list[str]]:
         if not relation_bucket:
             continue
         left_kind = _normalize_kind(row.get("left_term_kind"))
-        right_kind = _normalize_kind(row.get("right_term_kind"))
-        kind = left_kind or right_kind
+        canonical_kind = _normalize_kind(row.get("canonical_term_kind"))
+        kind = canonical_kind or left_kind
 
         if relation_bucket == "owl_equivalent_class":
             triples.add((left_iri, OWL_EQUIVALENT_CLASS, right_iri))
@@ -205,14 +212,7 @@ def _build_mapping_triples(df: pd.DataFrame) -> tuple[str, int, list[str]]:
 
 
 def _canonical_target_iri(row: pd.Series) -> str:
-    canonical = _safe_text(row.get("canonical_term_iri"))
-    if canonical:
-        return canonical
-    # Backward compatibility: approved right-side rows may still rely on right_term_iri.
-    if _safe_text(row.get("status")) == "approved":
-        if _safe_text(row.get("canonical_from")) in {"right", "manual", ""}:
-            return _safe_text(row.get("right_term_iri"))
-    return ""
+    return _safe_text(row.get("canonical_term_iri"))
 
 
 def _build_replacements(df: pd.DataFrame) -> tuple[dict[str, str], list[str]]:
@@ -361,7 +361,7 @@ def _compact_replacement_iris_with_prefixes(
         target = _canonical_target_iri(row)
         if not target:
             continue
-        source = _safe_text(row.get("canonical_term_source")) or _safe_text(row.get("right_source"))
+        source = _safe_text(row.get("canonical_term_source"))
         if source and target not in iri_to_source:
             iri_to_source[target] = source
 
@@ -404,36 +404,11 @@ def _compact_replacement_iris_with_prefixes(
 def _apply_view(df: pd.DataFrame, view: str) -> pd.DataFrame:
     if df.empty:
         return df
-    if view == "Reviewed rows (not needs_review)":
-        return df[df["status"] != "needs_review"]
-    if view == "Automatically matched and manually validated":
-        return df[
-            (df["status"] == "approved")
-            & (df["suggestion_source"] == "manual_curated")
-            & (~df["match_method"].str.startswith("manual_", na=False))
-        ]
-    if view == "Original terms kept":
-        # Left terms where all rows are rejected and logs indicate keep-left decision.
-        grouped = (
-            df.groupby(["left_source", "left_term_iri"], dropna=False)
-            .agg(
-                all_rejected=("status", lambda s: all(_safe_text(v) == "rejected" for v in s)),
-                logs=("logs", lambda s: " | ".join(_safe_text(v) for v in s)),
-            )
-            .reset_index()
-        )
-        keep_groups = grouped[
-            grouped["all_rejected"]
-            & grouped["logs"].str.lower().str.contains("kept current left term", na=False)
-        ][["left_source", "left_term_iri"]]
-        if keep_groups.empty:
-            return df.iloc[0:0]
-        return df.merge(keep_groups, on=["left_source", "left_term_iri"], how="inner")
-    if view == "Manually added terms":
-        return df[
-            df["match_method"].str.startswith("manual_", na=False)
-            | (df["suggestion_source"] == "manual_search")
-        ]
+    if view == "Approved mappings":
+        return df[df["status"] == "approved"]
+    if view == "Recently reviewed":
+        out = df[df["date_reviewed"].astype(str).str.strip() != ""].copy()
+        return out.sort_values(by="date_reviewed", ascending=False)
     return df
 
 
@@ -461,11 +436,11 @@ def render() -> None:
         hay = (
             shown["left_label"].str.lower()
             + " "
-            + shown["right_label"].str.lower()
+            + shown["canonical_term_label"].str.lower()
             + " "
             + shown["left_term_iri"].str.lower()
             + " "
-            + shown["right_term_iri"].str.lower()
+            + shown["canonical_term_iri"].str.lower()
             + " "
             + shown["logs"].str.lower()
             + " "

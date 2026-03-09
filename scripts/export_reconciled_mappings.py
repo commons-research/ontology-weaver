@@ -121,75 +121,22 @@ def build_source_to_canonical_rows(
 
         alignment_id = clean(row.get("alignment_id", ""))
         relation = clean(row.get("relation", ""))
-        suggestion_source = clean(row.get("suggestion_source", ""))
+        suggestion_source = clean(row.get("suggestion_source", "")) or "approved_ledger"
         curator = clean(row.get("curator", ""))
         reviewer = clean(row.get("reviewer", ""))
-        date_added = clean(row.get("date_added", ""))
         date_reviewed = clean(row.get("date_reviewed", ""))
-        notes = clean(row.get("notes", ""))
+        date_added = clean(row.get("date_added", "")) or date_reviewed
+        notes = clean(row.get("notes", "")) or clean(row.get("curation_comment", ""))
 
-        left_source = clean(row.get("left_source", ""))
-        left_iri = clean(row.get("left_term_iri", ""))
-        left_label = clean(row.get("left_label", ""))
-        right_source = clean(row.get("right_source", ""))
-        right_iri = clean(row.get("right_term_iri", ""))
-        right_label = clean(row.get("right_label", ""))
-
-        canonical_from = clean(row.get("canonical_from", "")).lower()
+        left_source = clean(row.get("source_term_source", "")) or clean(row.get("left_source", ""))
+        left_iri = clean(row.get("source_term_iri", "")) or clean(row.get("left_term_iri", ""))
+        left_label = clean(row.get("source_term_label", "")) or clean(row.get("left_label", ""))
         canonical_iri = clean(row.get("canonical_term_iri", ""))
         canonical_label = clean(row.get("canonical_term_label", ""))
         canonical_source = clean(row.get("canonical_term_source", ""))
         if not (canonical_iri and canonical_label and canonical_source):
             continue
 
-        # Source side selection:
-        # - canonical_from=right -> left term maps to canonical
-        # - canonical_from=left -> right term maps to canonical
-        # - canonical_from=manual -> both sides may map to canonical
-        # - fallback: infer side by IRI equality; if ambiguous, export both non-self terms.
-        if canonical_from == "right":
-            append_source_mapping(
-                out_rows,
-                seen_keys,
-                alignment_id=alignment_id,
-                source_term_source=left_source,
-                source_term_iri=left_iri,
-                source_term_label=left_label,
-                canonical_term_iri=canonical_iri,
-                canonical_term_label=canonical_label,
-                canonical_term_source=canonical_source,
-                relation=relation,
-                suggestion_source=suggestion_source,
-                curator=curator,
-                reviewer=reviewer,
-                date_added=date_added,
-                date_reviewed=date_reviewed,
-                notes=notes,
-            )
-            continue
-
-        if canonical_from == "left":
-            append_source_mapping(
-                out_rows,
-                seen_keys,
-                alignment_id=alignment_id,
-                source_term_source=right_source,
-                source_term_iri=right_iri,
-                source_term_label=right_label,
-                canonical_term_iri=canonical_iri,
-                canonical_term_label=canonical_label,
-                canonical_term_source=canonical_source,
-                relation=relation,
-                suggestion_source=suggestion_source,
-                curator=curator,
-                reviewer=reviewer,
-                date_added=date_added,
-                date_reviewed=date_reviewed,
-                notes=notes,
-            )
-            continue
-
-        # manual or fallback inference: include both sides that are not already canonical.
         append_source_mapping(
             out_rows,
             seen_keys,
@@ -197,24 +144,6 @@ def build_source_to_canonical_rows(
             source_term_source=left_source,
             source_term_iri=left_iri,
             source_term_label=left_label,
-            canonical_term_iri=canonical_iri,
-            canonical_term_label=canonical_label,
-            canonical_term_source=canonical_source,
-            relation=relation,
-            suggestion_source=suggestion_source,
-            curator=curator,
-            reviewer=reviewer,
-            date_added=date_added,
-            date_reviewed=date_reviewed,
-            notes=notes,
-        )
-        append_source_mapping(
-            out_rows,
-            seen_keys,
-            alignment_id=alignment_id,
-            source_term_source=right_source,
-            source_term_iri=right_iri,
-            source_term_label=right_label,
             canonical_term_iri=canonical_iri,
             canonical_term_label=canonical_label,
             canonical_term_source=canonical_source,

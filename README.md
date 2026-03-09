@@ -93,6 +93,26 @@ Each schema should have one TSV that contains:
 
 This versioned TSV is the shared review ledger and SSOT for exports.
 
+Minimal shared ledger columns:
+
+- `alignment_id`
+- `source_term_source`
+- `source_term_iri`
+- `source_term_label`
+- `source_term_kind`
+- `canonical_term_iri`
+- `canonical_term_label`
+- `canonical_term_source`
+- `canonical_term_kind`
+- `relation`
+- `status`
+- `curator`
+- `curator_name`
+- `reviewer`
+- `reviewer_name`
+- `date_reviewed`
+- `curation_comment`
+
 ## Local generated artefacts
 
 Do not version these generated caches/exports:

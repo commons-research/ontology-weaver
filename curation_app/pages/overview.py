@@ -38,9 +38,11 @@ def _source_metrics_df() -> pd.DataFrame:
         terms_approved = 0
         progress_pct = 0.0
 
-        if review_rows > 0 and {"left_source", "left_term_iri", "status"}.issubset(review_df.columns):
+        review_source_col = "source_term_source" if "source_term_source" in review_df.columns else "left_source"
+        review_iri_col = "source_term_iri" if "source_term_iri" in review_df.columns else "left_term_iri"
+        if review_rows > 0 and {review_source_col, review_iri_col, "status"}.issubset(review_df.columns):
             grouped = (
-                review_df.groupby(["left_source", "left_term_iri"], dropna=False)["status"]
+                review_df.groupby([review_source_col, review_iri_col], dropna=False)["status"]
                 .agg(
                     has_approved=lambda series: any(str(v) == "approved" for v in series),
                 )

@@ -20,6 +20,25 @@ from curation_app.config import ROOT_DIR
 
 FINAL_REVIEW_STATUSES = {"approved"}
 ORCID_RECORD_API = "https://pub.orcid.org/v3.0"
+LEDGER_COLUMNS = [
+    "alignment_id",
+    "source_term_source",
+    "source_term_iri",
+    "source_term_label",
+    "source_term_kind",
+    "canonical_term_iri",
+    "canonical_term_label",
+    "canonical_term_source",
+    "canonical_term_kind",
+    "relation",
+    "status",
+    "curator",
+    "curator_name",
+    "reviewer",
+    "reviewer_name",
+    "date_reviewed",
+    "curation_comment",
+]
 
 
 @dataclass(frozen=True)
@@ -276,54 +295,86 @@ def should_track_review_row(row: dict[str, object] | pd.Series) -> bool:
     return status in FINAL_REVIEW_STATUSES
 
 
-def pair_identity(row: dict[str, object] | pd.Series) -> tuple[str, str, str, str]:
-    """Build a stable pair identity for deduplicating ledger rows."""
+def ledger_identity(row: dict[str, object] | pd.Series) -> tuple[str, str, str]:
+    """Build a stable identity for deduplicating approved ledger rows."""
     return (
-        str((row.get("left_source", "") if hasattr(row, "get") else "") or "").strip().lower(),
-        str((row.get("left_term_iri", "") if hasattr(row, "get") else "") or "").strip(),
-        str((row.get("right_source", "") if hasattr(row, "get") else "") or "").strip().lower(),
-        str((row.get("right_term_iri", "") if hasattr(row, "get") else "") or "").strip(),
+        str((row.get("source_term_source", "") if hasattr(row, "get") else "") or "").strip().lower(),
+        str((row.get("source_term_iri", "") if hasattr(row, "get") else "") or "").strip(),
+        str((row.get("canonical_term_iri", "") if hasattr(row, "get") else "") or "").strip(),
     )
+
+
+def project_review_row(row: dict[str, object] | pd.Series) -> dict[str, str]:
+    """Project one approved queue row into the minimal shared ledger schema."""
+    canonical_from = str((row.get("canonical_from", "") if hasattr(row, "get") else "") or "").strip().lower()
+    left_kind = str((row.get("left_term_kind", "") if hasattr(row, "get") else "") or "").strip()
+    right_kind = str((row.get("right_term_kind", "") if hasattr(row, "get") else "") or "").strip()
+    canonical_kind = str((row.get("canonical_term_kind", "") if hasattr(row, "get") else "") or "").strip()
+    if not canonical_kind:
+        if canonical_from == "left":
+            canonical_kind = left_kind
+        elif canonical_from == "right":
+            canonical_kind = right_kind
+        elif str((row.get("canonical_term_iri", "") if hasattr(row, "get") else "") or "").strip() == str(
+            (row.get("left_term_iri", "") if hasattr(row, "get") else "") or ""
+        ).strip():
+            canonical_kind = left_kind
+        else:
+            canonical_kind = right_kind
+
+    return {
+        "alignment_id": str((row.get("alignment_id", "") if hasattr(row, "get") else "") or "").strip(),
+        "source_term_source": str((row.get("left_source", "") if hasattr(row, "get") else "") or "").strip(),
+        "source_term_iri": str((row.get("left_term_iri", "") if hasattr(row, "get") else "") or "").strip(),
+        "source_term_label": str((row.get("left_label", "") if hasattr(row, "get") else "") or "").strip(),
+        "source_term_kind": left_kind,
+        "canonical_term_iri": str((row.get("canonical_term_iri", "") if hasattr(row, "get") else "") or "").strip(),
+        "canonical_term_label": str((row.get("canonical_term_label", "") if hasattr(row, "get") else "") or "").strip(),
+        "canonical_term_source": str(
+            (row.get("canonical_term_source", "") if hasattr(row, "get") else "") or ""
+        ).strip(),
+        "canonical_term_kind": canonical_kind,
+        "relation": str((row.get("relation", "") if hasattr(row, "get") else "") or "").strip(),
+        "status": str((row.get("status", "") if hasattr(row, "get") else "") or "").strip(),
+        "curator": str((row.get("curator", "") if hasattr(row, "get") else "") or "").strip(),
+        "curator_name": str((row.get("curator_name", "") if hasattr(row, "get") else "") or "").strip(),
+        "reviewer": str((row.get("reviewer", "") if hasattr(row, "get") else "") or "").strip(),
+        "reviewer_name": str((row.get("reviewer_name", "") if hasattr(row, "get") else "") or "").strip(),
+        "date_reviewed": str((row.get("date_reviewed", "") if hasattr(row, "get") else "") or "").strip(),
+        "curation_comment": str((row.get("curation_comment", "") if hasattr(row, "get") else "") or "").strip(),
+    }
 
 
 def sync_review_ledger(review_df: pd.DataFrame, queue_df: pd.DataFrame) -> pd.DataFrame:
     """Upsert finalized rows from the local queue into the versioned review ledger."""
+    merged_cols = list(LEDGER_COLUMNS)
     if review_df.empty:
-        merged_cols = list(queue_df.columns)
         ledger = pd.DataFrame(columns=merged_cols)
     else:
-        merged_cols = list(review_df.columns)
-        for col in queue_df.columns:
-            if col not in merged_cols:
-                merged_cols.append(col)
         ledger = review_df.copy()
         for col in merged_cols:
             if col not in ledger.columns:
                 ledger[col] = ""
+        ledger = ledger.reindex(columns=merged_cols, fill_value="")
 
     tracked = queue_df[queue_df.apply(should_track_review_row, axis=1)].copy()
     if tracked.empty:
         return ledger.reindex(columns=merged_cols, fill_value="")
 
-    if ledger.empty:
-        ledger = pd.DataFrame(columns=merged_cols)
-
-    for col in merged_cols:
-        if col not in tracked.columns:
-            tracked[col] = ""
-    tracked = tracked.reindex(columns=merged_cols, fill_value="")
+    tracked_rows = [project_review_row(row) for _, row in tracked.iterrows()]
+    tracked = pd.DataFrame(tracked_rows, columns=merged_cols)
 
     id_to_idx: dict[str, int] = {}
-    pair_to_idx: dict[tuple[str, str, str, str], int] = {}
+    pair_to_idx: dict[tuple[str, str, str], int] = {}
     for idx, row in ledger.iterrows():
         alignment_id = str(row.get("alignment_id", "") or "").strip()
         if alignment_id:
             id_to_idx[alignment_id] = idx
-        pair_to_idx[pair_identity(row)] = idx
+        pair_to_idx[ledger_identity(row)] = idx
 
     for _, row in tracked.iterrows():
         alignment_id = str(row.get("alignment_id", "") or "").strip()
-        pair_key = pair_identity(row)
+        pair_key = ledger_identity(row)
         existing_idx = None
         if alignment_id and alignment_id in id_to_idx:
             existing_idx = id_to_idx[alignment_id]
