@@ -275,7 +275,8 @@ def render() -> None:
 
     st.caption(f"Active source: `{ctx.source_label}`")
     st.caption(f"Terms file: `{to_relpath(ctx.terms_tsv)}`")
-    st.caption(f"Candidates file: `{to_relpath(ctx.candidates_tsv)}`")
+    st.caption(f"Review ledger: `{to_relpath(ctx.review_tsv)}`")
+    st.caption(f"Local queue: `{to_relpath(ctx.queue_tsv)}`")
 
     relation_catalog, catalog_msg = _load_mapping_relations_from_local_ontologies()
     relation_options: list[str] = []
@@ -559,8 +560,8 @@ def render() -> None:
             example=left_example.strip(),
         )
 
-        cand_df = _ensure_columns(read_tsv(ctx.candidates_tsv))
-        if cand_df.empty and not ctx.candidates_tsv.is_file():
+        cand_df = _ensure_columns(read_tsv(ctx.queue_tsv))
+        if cand_df.empty and not ctx.queue_tsv.is_file():
             cand_df = pd.DataFrame(columns=REQUIRED_COLUMNS)
             cand_df = _ensure_columns(cand_df)
         if "date_added" not in cand_df.columns:
@@ -692,10 +693,10 @@ def render() -> None:
                 cand_df = pd.concat([cand_df, pd.DataFrame([entry], columns=cand_df.columns)], ignore_index=True)
 
         write_tsv(terms_df, ctx.terms_tsv)
-        write_tsv(cand_df, ctx.candidates_tsv)
+        write_tsv(cand_df, ctx.queue_tsv)
 
         st.success(
-            f"Term {term_action}: `{label}`. Added {len(new_rows)} candidate row(s) for curation."
+            f"Term {term_action}: `{label}`. Added {len(new_rows)} row(s) to the local queue."
         )
         if st.button("Go to Curate candidates"):
             st.session_state[STATE_PAGE] = "Curate candidates"

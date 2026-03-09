@@ -20,6 +20,7 @@ from curation_app.helpers import (
     normalize_notes_for_approval,
     read_tsv,
     render_clickable_dataframe,
+    sync_review_ledger,
     to_path,
     to_relpath,
     utc_now_timestamp,
@@ -175,13 +176,21 @@ def _file_mtime(path_text: str) -> float | None:
     return resolved.stat().st_mtime
 
 
-def _autosave_if_dirty(candidate_file: str) -> None:
+def _save_queue_and_sync_review(queue_file: str, review_file: str) -> None:
+    queue_df = st.session_state[STATE_DF]
+    write_tsv(queue_df, queue_file)
+    review_df = read_tsv(review_file)
+    synced_review_df = sync_review_ledger(review_df, queue_df)
+    write_tsv(synced_review_df, review_file)
+    st.session_state[STATE_MTIME] = _file_mtime(queue_file)
+
+
+def _autosave_if_dirty(queue_file: str, review_file: str) -> None:
     if not st.session_state.get(STATE_DIRTY):
         return
-    write_tsv(st.session_state[STATE_DF], candidate_file)
+    _save_queue_and_sync_review(queue_file, review_file)
     st.session_state[STATE_DIRTY] = False
-    st.session_state[STATE_MTIME] = _file_mtime(candidate_file)
-    st.caption("Auto-saved candidate file.")
+    st.caption("Auto-saved local queue and synced reviewed decisions.")
 
 
 def _set_review_fields(df: pd.DataFrame, idx: int, reviewer: str) -> None:
@@ -1180,8 +1189,10 @@ def render() -> None:
         st.warning("No source slug available. Configure sources in Download External Sources first.")
         return
 
-    candidate_file = to_relpath(ctx.candidates_tsv)
-    st.caption(f"Active candidates file: `{candidate_file}`")
+    queue_file = to_relpath(ctx.queue_tsv)
+    review_file = to_relpath(ctx.review_tsv)
+    st.caption(f"Local queue: `{queue_file}`")
+    st.caption(f"Review ledger: `{review_file}`")
     active_curator = str(st.session_state.get(STATE_CURATOR, "") or "").strip()
     if active_curator:
         st.caption(f"Active curator: `{active_curator}`")
@@ -1191,19 +1202,19 @@ def render() -> None:
 
     if (
         STATE_PATH not in st.session_state
-        or st.session_state.get(STATE_PATH) != candidate_file
+        or st.session_state.get(STATE_PATH) != queue_file
         or STATE_DF not in st.session_state
     ):
-        st.session_state[STATE_PATH] = candidate_file
-        st.session_state[STATE_DF] = _load_df(candidate_file)
+        st.session_state[STATE_PATH] = queue_file
+        st.session_state[STATE_DF] = _load_df(queue_file)
         st.session_state[STATE_DIRTY] = False
-        st.session_state[STATE_MTIME] = _file_mtime(candidate_file)
+        st.session_state[STATE_MTIME] = _file_mtime(queue_file)
         st.session_state[STATE_KEPT_LEFT_TERMS] = []
 
     if STATE_KEPT_LEFT_TERMS not in st.session_state:
         st.session_state[STATE_KEPT_LEFT_TERMS] = []
 
-    current_mtime = _file_mtime(candidate_file)
+    current_mtime = _file_mtime(queue_file)
     loaded_mtime = st.session_state.get(STATE_MTIME)
     if current_mtime != loaded_mtime:
         if st.session_state.get(STATE_DIRTY):
@@ -1212,22 +1223,21 @@ def render() -> None:
                 "Use 'Reload from disk' to refresh."
             )
         else:
-            st.session_state[STATE_DF] = _load_df(candidate_file)
+            st.session_state[STATE_DF] = _load_df(queue_file)
             st.session_state[STATE_MTIME] = current_mtime
-            st.info("Reloaded latest candidates from disk.")
+            st.info("Reloaded latest local queue from disk.")
 
     col_reload, col_save = st.columns(2)
     with col_reload:
         if st.button("Reload from disk"):
-            st.session_state[STATE_DF] = _load_df(candidate_file)
+            st.session_state[STATE_DF] = _load_df(queue_file)
             st.session_state[STATE_DIRTY] = False
-            st.session_state[STATE_MTIME] = _file_mtime(candidate_file)
+            st.session_state[STATE_MTIME] = _file_mtime(queue_file)
     with col_save:
-        if st.button("Save candidate file", type="primary"):
-            write_tsv(st.session_state[STATE_DF], candidate_file)
+        if st.button("Save local queue", type="primary"):
+            _save_queue_and_sync_review(queue_file, review_file)
             st.session_state[STATE_DIRTY] = False
-            st.session_state[STATE_MTIME] = _file_mtime(candidate_file)
-            st.success(f"Saved `{candidate_file}`")
+            st.success(f"Saved `{queue_file}` and synced `{review_file}`")
 
     relation_catalog, catalog_msg = _load_mapping_relations_from_local_ontologies()
     if relation_catalog is None:
@@ -1248,8 +1258,8 @@ def render() -> None:
         st.caption(catalog_msg)
 
     df = st.session_state[STATE_DF]
-    if df.empty and not to_path(candidate_file).is_file():
-        st.warning("No candidate file found for this source. Please run Generate Pairwise Candidates first.")
+    if df.empty and not to_path(queue_file).is_file():
+        st.warning("No local queue found for this source. Please run Generate Pairwise Candidates first.")
         return
 
     term_groups = (
@@ -1734,10 +1744,20 @@ def render() -> None:
     st.download_button(
         label="Download working candidate TSV",
         data=dataframe_to_tsv_bytes(df),
-        file_name=to_path(candidate_file).name,
+        file_name=to_path(queue_file).name,
         mime="text/tab-separated-values",
         key="download_working_candidates",
     )
 
+    review_df = read_tsv(review_file)
+    if not review_df.empty or to_path(review_file).is_file():
+        st.download_button(
+            label="Download review ledger TSV",
+            data=dataframe_to_tsv_bytes(review_df),
+            file_name=to_path(review_file).name,
+            mime="text/tab-separated-values",
+            key="download_review_ledger",
+        )
+
     if st.session_state.get(STATE_DIRTY):
-        _autosave_if_dirty(candidate_file)
+        _autosave_if_dirty(queue_file, review_file)

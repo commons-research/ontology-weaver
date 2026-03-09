@@ -7,6 +7,10 @@ Keep one review TSV per schema in Git:
 
 - `registry/pair_alignment_candidates_<source>.tsv`
 
+Keep the local queue outside Git:
+
+- `registry/work/pair_alignment_candidates_<source>.tsv`
+
 Generate local cache/export artefacts when needed:
 
 - `registry/reconciled_mappings.tsv` (source -> canonical)
@@ -54,13 +58,14 @@ scripts/suggest_pairwise_alignments.py \
   --request-timeout 3 \
   --max-left-terms 100 \
   --curated-alignments registry/pair_alignment_candidates_emi.tsv \
-  --output registry/pair_alignment_candidates_emi.tsv
+  --output registry/work/pair_alignment_candidates_emi.tsv
 ```
 
 Notes:
 - `--ols-fetch-metadata` tries to pull `definition/comment/example` from OLS term endpoint.
 - Metadata availability depends on the source ontology in OLS; some terms have none.
-- The output file is also the long-lived review file. Regeneration keeps approved/rejected/deprecated rows and manual additions, then refreshes the auto-suggested `needs_review` rows.
+- The output file is local-only. It can be focused to a subset of labels without shrinking the shared Git-tracked ledger.
+- Approved review decisions are synced from the local queue into `registry/pair_alignment_candidates_<source>.tsv`.
 
 Candidate table includes:
 - OLS suggestion columns (`right_*`)
@@ -68,7 +73,7 @@ Candidate table includes:
 
 ## 3) Curate 3 rows (manual edit in TSV)
 
-Open `registry/pair_alignment_candidates_emi.tsv` and curate rows in place:
+Open `registry/work/pair_alignment_candidates_emi.tsv` and curate rows there:
 
 1. `EMI canonical is correct`:
 - set `status=approved`
@@ -99,7 +104,7 @@ Alternative (recommended) lightweight reviewer UI in terminal:
 
 ```bash
 scripts/review_pair_candidates.py \
-  --candidates-file registry/pair_alignment_candidates_emi.tsv \
+  --candidates-file registry/work/pair_alignment_candidates_emi.tsv \
   --status-filter needs_review \
   --reviewer your_name
 ```
@@ -115,6 +120,12 @@ Actions per row:
 
 ```bash
 scripts/validate_pair_alignments.py registry/pair_alignment_candidates_emi.tsv --kind candidate
+```
+
+Validate the local queue before syncing decisions when needed:
+
+```bash
+scripts/validate_pair_alignments.py registry/work/pair_alignment_candidates_emi.tsv --kind candidate
 ```
 
 ## 5) Sync into SQLite + export canonical outputs
@@ -145,6 +156,7 @@ Commit:
 
 Keep local only:
 
+- queue files under `registry/work/`
 - downloads/import extracts
 - SQLite DB
 - reconciled exports

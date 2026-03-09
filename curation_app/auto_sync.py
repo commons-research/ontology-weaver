@@ -1,4 +1,4 @@
-"""Automatic background SQLite sync for curated candidate files."""
+"""Automatic background SQLite sync for versioned review ledgers."""
 
 from __future__ import annotations
 
@@ -57,12 +57,12 @@ def auto_sync_sqlite(manifest_df: pd.DataFrame) -> tuple[bool, str]:
     if not all_sources:
         return True, "No active sources; auto-sync skipped."
 
-    candidate_paths: list[Path] = []
+    review_paths: list[Path] = []
     signatures: list[str] = []
     for src in all_sources:
         ctx = source_context(src, manifest_df)
-        candidate_paths.append(ctx.candidates_tsv)
-        signatures.append(_file_signature(ctx.candidates_tsv))
+        review_paths.append(ctx.review_tsv)
+        signatures.append(_file_signature(ctx.review_tsv))
 
     fingerprint = "|".join(sorted(signatures))
     if st.session_state.get(STATE_SYNC_FINGERPRINT) == fingerprint:
@@ -70,7 +70,7 @@ def auto_sync_sqlite(manifest_df: pd.DataFrame) -> tuple[bool, str]:
 
     merged_rows: list[dict[str, str]] = []
     all_columns: set[str] = set()
-    for src, path in zip(all_sources, candidate_paths):
+    for src, path in zip(all_sources, review_paths):
         df = read_tsv(path)
         if df.empty:
             continue

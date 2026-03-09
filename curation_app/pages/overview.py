@@ -27,8 +27,10 @@ def _source_metrics_df() -> pd.DataFrame:
         terms_df = read_tsv(ctx.terms_tsv)
         terms_loaded = len(terms_df) if ctx.terms_tsv.is_file() else 0
 
-        cand_df = read_tsv(ctx.candidates_tsv)
-        candidate_rows = len(cand_df) if ctx.candidates_tsv.is_file() else 0
+        review_df = read_tsv(ctx.review_tsv)
+        queue_df = read_tsv(ctx.queue_tsv)
+        review_rows = len(review_df) if ctx.review_tsv.is_file() else 0
+        queue_rows = len(queue_df) if ctx.queue_tsv.is_file() else 0
 
         terms_in_scope = 0
         terms_needs_review = 0
@@ -36,20 +38,20 @@ def _source_metrics_df() -> pd.DataFrame:
         terms_approved = 0
         progress_pct = 0.0
 
-        if candidate_rows > 0 and {"left_source", "left_term_iri", "status"}.issubset(cand_df.columns):
+        if review_rows > 0 and {"left_source", "left_term_iri", "status"}.issubset(review_df.columns):
             grouped = (
-                cand_df.groupby(["left_source", "left_term_iri"], dropna=False)["status"]
+                review_df.groupby(["left_source", "left_term_iri"], dropna=False)["status"]
                 .agg(
-                    has_needs_review=lambda series: any(str(v) == "needs_review" for v in series),
                     has_approved=lambda series: any(str(v) == "approved" for v in series),
                 )
                 .reset_index()
             )
             terms_in_scope = len(grouped)
-            terms_needs_review = int(grouped["has_needs_review"].sum()) if not grouped.empty else 0
-            terms_curated = max(0, terms_in_scope - terms_needs_review)
+            terms_curated = terms_in_scope
             terms_approved = int(grouped["has_approved"].sum()) if not grouped.empty else 0
-            progress_pct = (100.0 * terms_curated / terms_in_scope) if terms_in_scope else 0.0
+            progress_pct = (100.0 * terms_curated / terms_loaded) if terms_loaded else 0.0
+        if queue_rows > 0 and {"status"}.issubset(queue_df.columns):
+            terms_needs_review = int((queue_df["status"].astype(str) == "needs_review").sum())
 
         ttl_status = "yes" if ctx.download_ttl.is_file() else "no"
         rows.append(
@@ -57,15 +59,16 @@ def _source_metrics_df() -> pd.DataFrame:
                 "Source": ctx.source_label,
                 "TTL downloaded": ttl_status,
                 "Terms loaded": terms_loaded,
-                "Candidate rows": candidate_rows,
-                "Terms in curation": terms_in_scope,
-                "Curated terms": terms_curated,
-                "Terms needs review": terms_needs_review,
+                "Review rows": review_rows,
+                "Local queue rows": queue_rows,
+                "Terms reviewed": terms_curated,
+                "Local needs review": terms_needs_review,
                 "Approved terms": terms_approved,
                 "Progress %": f"{progress_pct:.1f}",
                 "TTL file": to_relpath(ctx.download_ttl),
                 "Terms file": to_relpath(ctx.terms_tsv),
-                "Candidates file": to_relpath(ctx.candidates_tsv),
+                "Review file": to_relpath(ctx.review_tsv),
+                "Local queue": to_relpath(ctx.queue_tsv),
             }
         )
     return pd.DataFrame(rows)
@@ -86,11 +89,11 @@ def render() -> None:
         st.subheader("Curation progress by schema")
         for _, row in metrics_df.iterrows():
             source = str(row.get("Source", "") or "-")
-            curated = int(row.get("Curated terms", 0) or 0)
-            total = int(row.get("Terms in curation", 0) or 0)
+            curated = int(row.get("Terms reviewed", 0) or 0)
+            total = int(row.get("Terms loaded", 0) or 0)
             pct = (curated / total) if total else 0.0
             st.write(f"**{source}**")
-            st.progress(pct, text=f"{curated}/{total} terms curated ({pct * 100:.1f}%)")
+            st.progress(pct, text=f"{curated}/{total} reviewed term(s) in shared ledger")
 
     st.subheader("Recommended flow")
     st.write("1. **Fetch schemas and ontologies**: maintain source manifest, download TTLs, and browse OLS catalog.")

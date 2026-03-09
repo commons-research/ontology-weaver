@@ -9,6 +9,7 @@ REGISTRY_DIR = ROOT_DIR / "registry"
 SCRIPTS_DIR = ROOT_DIR / "scripts"
 DOWNLOADS_DIR = REGISTRY_DIR / "downloads"
 IMPORTS_DIR = REGISTRY_DIR / "imports"
+WORK_DIR = REGISTRY_DIR / "work"
 
 DEFAULT_CANDIDATES_FILE = REGISTRY_DIR / "pair_alignment_candidates.tsv"
 DEFAULT_CURATED_FILE = REGISTRY_DIR / "pair_alignments.tsv"

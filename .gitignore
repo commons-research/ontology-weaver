@@ -17,3 +17,4 @@ registry/pair_alignments.tsv
 registry/reconciled_mappings.tsv
 registry/reconciled_canonical_groups.tsv
 registry/schema_docs/
+registry/work/
