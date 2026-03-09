@@ -54,6 +54,17 @@ def clean(value: str) -> str:
     return (value or "").strip()
 
 
+def stable_alignment_id(row: dict[str, str]) -> str:
+    """Return queue alignment_id or derive a stable internal ID for shared-ledger rows."""
+    explicit = clean(row.get("alignment_id", ""))
+    if explicit:
+        return explicit
+    source_term_iri = clean(row.get("source_term_iri", "")) or clean(row.get("left_term_iri", ""))
+    if source_term_iri:
+        return f"LEDGER::{source_term_iri}"
+    return ""
+
+
 def append_source_mapping(
     out_rows: list[dict[str, str]],
     seen_keys: set[tuple[str, str]],
@@ -119,7 +130,7 @@ def build_source_to_canonical_rows(
         if status != status_filter.lower():
             continue
 
-        alignment_id = clean(row.get("alignment_id", ""))
+        alignment_id = stable_alignment_id(row)
         relation = clean(row.get("relation", ""))
         suggestion_source = clean(row.get("suggestion_source", "")) or "approved_ledger"
         curator = clean(row.get("curator", ""))

@@ -71,7 +71,6 @@ QUEUE_REQUIRED_COLUMNS = [
     "date_added",
 ]
 LEDGER_REQUIRED_COLUMNS = [
-    "alignment_id",
     "source_term_source",
     "source_term_kind",
     "source_term_iri",
@@ -197,6 +196,7 @@ def validate_file(path: Path, kind: str = "auto") -> list[str]:
         return errors
 
     seen_ids: set[str] = set()
+    seen_source_iris: set[str] = set()
     for line_no, row in enumerate(rows, start=2):
         alignment_id = (row.get("alignment_id", "") or "").strip()
         left_source = (
@@ -260,8 +260,7 @@ def validate_file(path: Path, kind: str = "auto") -> list[str]:
             )
         else:
             missing_required = (
-                not alignment_id
-                or not left_source
+                not left_source
                 or not left_kind
                 or not left_iri
                 or not left_label
@@ -279,12 +278,17 @@ def validate_file(path: Path, kind: str = "auto") -> list[str]:
         if missing_required:
             errors.append(f"Row {line_no}: required field is empty")
 
-        if not alignment_id_re.fullmatch(alignment_id):
-            errors.append(f"Row {line_no}: invalid alignment_id format: {alignment_id}")
+        if queue_mode:
+            if not alignment_id_re.fullmatch(alignment_id):
+                errors.append(f"Row {line_no}: invalid alignment_id format: {alignment_id}")
 
-        if alignment_id in seen_ids:
-            errors.append(f"Row {line_no}: duplicate alignment_id: {alignment_id}")
-        seen_ids.add(alignment_id)
+            if alignment_id in seen_ids:
+                errors.append(f"Row {line_no}: duplicate alignment_id: {alignment_id}")
+            seen_ids.add(alignment_id)
+        else:
+            if left_iri in seen_source_iris:
+                errors.append(f"Row {line_no}: duplicate source_term_iri: {left_iri}")
+            seen_source_iris.add(left_iri)
 
         if queue_mode and not is_valid_score(match_score):
             errors.append(f"Row {line_no}: match_score must be between 0 and 1")

@@ -50,7 +50,6 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     if "curation_comment" not in out.columns:
         out["curation_comment"] = ""
     for col in [
-        "alignment_id",
         "source_term_source",
         "source_term_iri",
         "source_term_label",

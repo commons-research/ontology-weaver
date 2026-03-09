@@ -9,7 +9,6 @@ Keep one review TSV per schema in Git:
 
 This shared ledger is intentionally minimal. It stores only approved source-to-canonical mappings plus review provenance:
 
-- `alignment_id`
 - `source_term_source`
 - `source_term_iri`
 - `source_term_label`

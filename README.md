@@ -92,10 +92,10 @@ Each schema should have one TSV that contains:
 - approved review decisions
 
 This versioned TSV is the shared review ledger and SSOT for exports.
+It is kept deterministically sorted by `source_term_iri` and written with LF line endings so Git diffs stay row-local.
 
 Minimal shared ledger columns:
 
-- `alignment_id`
 - `source_term_source`
 - `source_term_iri`
 - `source_term_label`

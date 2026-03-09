@@ -7,6 +7,7 @@ import json
 from pathlib import Path
 import shlex
 import sqlite3
+from io import StringIO
 import subprocess
 import sys
 import urllib.request
@@ -21,7 +22,6 @@ from curation_app.config import ROOT_DIR
 FINAL_REVIEW_STATUSES = {"approved"}
 ORCID_RECORD_API = "https://pub.orcid.org/v3.0"
 LEDGER_COLUMNS = [
-    "alignment_id",
     "source_term_source",
     "source_term_iri",
     "source_term_label",
@@ -122,7 +122,14 @@ def write_tsv(df: pd.DataFrame, path: str | Path) -> None:
     """Write dataframe to TSV and create parent directories if needed."""
     target = to_path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    df.to_csv(target, sep="\t", index=False)
+    buffer = StringIO()
+    df.to_csv(buffer, sep="\t", index=False, lineterminator="\n")
+    content = buffer.getvalue()
+    if target.is_file():
+        existing = target.read_text(encoding="utf-8", errors="replace")
+        if existing == content:
+            return
+    target.write_text(content, encoding="utf-8")
 
 
 def _is_http_link(value: object) -> bool:
@@ -295,13 +302,9 @@ def should_track_review_row(row: dict[str, object] | pd.Series) -> bool:
     return status in FINAL_REVIEW_STATUSES
 
 
-def ledger_identity(row: dict[str, object] | pd.Series) -> tuple[str, str, str]:
-    """Build a stable identity for deduplicating approved ledger rows."""
-    return (
-        str((row.get("source_term_source", "") if hasattr(row, "get") else "") or "").strip().lower(),
-        str((row.get("source_term_iri", "") if hasattr(row, "get") else "") or "").strip(),
-        str((row.get("canonical_term_iri", "") if hasattr(row, "get") else "") or "").strip(),
-    )
+def ledger_identity(row: dict[str, object] | pd.Series) -> str:
+    """Use source term IRI as the shared-ledger identity."""
+    return str((row.get("source_term_iri", "") if hasattr(row, "get") else "") or "").strip()
 
 
 def project_review_row(row: dict[str, object] | pd.Series) -> dict[str, str]:
@@ -323,7 +326,6 @@ def project_review_row(row: dict[str, object] | pd.Series) -> dict[str, str]:
             canonical_kind = right_kind
 
     return {
-        "alignment_id": str((row.get("alignment_id", "") if hasattr(row, "get") else "") or "").strip(),
         "source_term_source": str((row.get("left_source", "") if hasattr(row, "get") else "") or "").strip(),
         "source_term_iri": str((row.get("left_term_iri", "") if hasattr(row, "get") else "") or "").strip(),
         "source_term_label": str((row.get("left_label", "") if hasattr(row, "get") else "") or "").strip(),
@@ -364,38 +366,32 @@ def sync_review_ledger(review_df: pd.DataFrame, queue_df: pd.DataFrame) -> pd.Da
     tracked_rows = [project_review_row(row) for _, row in tracked.iterrows()]
     tracked = pd.DataFrame(tracked_rows, columns=merged_cols)
 
-    id_to_idx: dict[str, int] = {}
-    pair_to_idx: dict[tuple[str, str, str], int] = {}
+    pair_to_idx: dict[str, int] = {}
     for idx, row in ledger.iterrows():
-        alignment_id = str(row.get("alignment_id", "") or "").strip()
-        if alignment_id:
-            id_to_idx[alignment_id] = idx
         pair_to_idx[ledger_identity(row)] = idx
 
     for _, row in tracked.iterrows():
-        alignment_id = str(row.get("alignment_id", "") or "").strip()
         pair_key = ledger_identity(row)
-        existing_idx = None
-        if alignment_id and alignment_id in id_to_idx:
-            existing_idx = id_to_idx[alignment_id]
-        elif pair_key in pair_to_idx:
-            existing_idx = pair_to_idx[pair_key]
+        existing_idx = pair_to_idx.get(pair_key)
 
         row_values = {col: str(row.get(col, "") or "") for col in merged_cols}
         if existing_idx is None:
             ledger = pd.concat([ledger, pd.DataFrame([row_values], columns=merged_cols)], ignore_index=True)
             new_idx = int(ledger.index[-1])
-            if alignment_id:
-                id_to_idx[alignment_id] = new_idx
             pair_to_idx[pair_key] = new_idx
         else:
             for col, value in row_values.items():
                 ledger.at[existing_idx, col] = value
-            if alignment_id:
-                id_to_idx[alignment_id] = existing_idx
             pair_to_idx[pair_key] = existing_idx
 
-    return ledger.reindex(columns=merged_cols, fill_value="")
+    ledger = ledger.reindex(columns=merged_cols, fill_value="")
+    if not ledger.empty:
+        ledger = ledger.sort_values(
+            by=["source_term_source", "source_term_iri"],
+            kind="stable",
+            na_position="last",
+        ).reset_index(drop=True)
+    return ledger
 
 
 def sqlite_tables(db_path: str | Path) -> list[str]:

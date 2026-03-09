@@ -122,6 +122,17 @@ def clean(value: str) -> str:
     return (value or "").strip()
 
 
+def stable_alignment_id(row: dict[str, str]) -> str:
+    """Return queue alignment_id or derive a stable internal ID for shared-ledger rows."""
+    explicit = clean(row.get("alignment_id", ""))
+    if explicit:
+        return explicit
+    source_term_iri = clean(row.get("source_term_iri", "")) or clean(row.get("left_term_iri", ""))
+    if source_term_iri:
+        return f"LEDGER::{source_term_iri}"
+    return ""
+
+
 def read_tsv(path: Path) -> list[dict[str, str]]:
     """Read TSV rows as dictionaries."""
     if not path.is_file():
@@ -272,6 +283,8 @@ def insert_pair_rows(
         for col in PAIR_ALIGNMENT_COLUMNS:
             if col == "match_score":
                 values.append(to_float_or_none(row.get(col, "")))
+            elif col == "alignment_id":
+                values.append(stable_alignment_id(row))
             elif col == "left_source":
                 values.append(clean(row.get("left_source", "")) or clean(row.get("source_term_source", "")))
             elif col == "left_term_iri":
@@ -349,7 +362,7 @@ def build_reconciled_rows(
         if clean(row.get("status", "")).lower() != status_filter.lower():
             continue
 
-        alignment_id = clean(row.get("alignment_id", ""))
+        alignment_id = stable_alignment_id(row)
         relation = clean(row.get("relation", ""))
         suggestion_source = clean(row.get("suggestion_source", "")) or "approved_ledger"
         curator = clean(row.get("curator", ""))

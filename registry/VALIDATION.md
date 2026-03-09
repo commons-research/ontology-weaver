@@ -14,7 +14,6 @@ This repository uses a one-TSV-per-schema review workflow plus local derived exp
 
 ## Required columns
 Shared review ledger:
-- `alignment_id`
 - `source_term_source`
 - `source_term_iri`
 - `source_term_label`
@@ -32,12 +31,14 @@ Shared review ledger:
 - `date_reviewed`
 - `curation_comment`
 
+The shared review ledger is deterministically sorted by `source_term_iri` and normalized to LF line endings.
+
 Local queue:
 - full candidate-generation/review columns, including `right_*`, matching metadata, search URLs, and review fields
 
 ## Allowed values
 - `alignment_id`:
-  - review ledger / local queue rows: `CAND_0001`, `CAND_0002`, ...
+  - local queue rows only: `CAND_0001`, `CAND_0002`, ...
 - `relation`: `exact|close|broad|narrow|related|owl:*|rdfs:*|skos:*` from the supported mapping set
 - `status`: `needs_review|approved|rejected|deprecated`
 - `canonical_from`: `left|right|manual` (or empty before approval)
