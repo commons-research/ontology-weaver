@@ -6,6 +6,7 @@ import streamlit as st
 
 from curation_app.auto_sync import STATE_SYNC_LAST_ERROR, auto_sync_sqlite
 from curation_app.context import enabled_source_ids, load_manifest, source_context, source_ids
+from curation_app.helpers import fetch_orcid_display_name, is_valid_orcid, normalize_orcid
 from curation_app.pages import (
     add_terms,
     curate_candidates,
@@ -21,6 +22,8 @@ from curation_app.pages import (
 
 STATE_SOURCE_ID = "active_source_id"
 STATE_CURATOR = "active_curator"
+STATE_CURATOR_INPUT = "active_curator_input"
+STATE_CURATOR_NAME = "active_curator_name"
 STATE_PAGE = "active_page"
 
 
@@ -76,13 +79,35 @@ def main() -> None:
             help="Single source slug reused automatically across workflow steps.",
         )
         st.session_state[STATE_SOURCE_ID] = selected_source_id
-        curator_value = str(st.session_state.get(STATE_CURATOR, "") or "").strip()
+        curator_value = str(
+            st.session_state.get(STATE_CURATOR_INPUT, st.session_state.get(STATE_CURATOR, "")) or ""
+        ).strip()
         curator_input = st.sidebar.text_input(
-            "Curator",
+            "Curator ORCID",
             value=curator_value,
-            help="Your curator id/name used for review attribution in shared files.",
+            help="Enter a valid ORCID iD. The public name is fetched automatically from ORCID.",
         )
-        st.session_state[STATE_CURATOR] = curator_input.strip()
+        st.session_state[STATE_CURATOR_INPUT] = curator_input.strip()
+        normalized_orcid = normalize_orcid(curator_input)
+        if curator_input.strip():
+            if is_valid_orcid(normalized_orcid):
+                st.session_state[STATE_CURATOR] = normalized_orcid
+                display_name, lookup_error = fetch_orcid_display_name(normalized_orcid)
+                st.sidebar.caption(f"Normalized ORCID: `{normalized_orcid}`")
+                if display_name:
+                    st.session_state[STATE_CURATOR_NAME] = display_name
+                    st.sidebar.caption(f"Resolved name: `{display_name}`")
+                elif lookup_error:
+                    st.session_state[STATE_CURATOR] = ""
+                    st.session_state[STATE_CURATOR_NAME] = ""
+                    st.sidebar.warning(lookup_error)
+            else:
+                st.session_state[STATE_CURATOR] = ""
+                st.session_state[STATE_CURATOR_NAME] = ""
+                st.sidebar.error("Enter a valid ORCID iD, for example `0000-0002-1825-0097`.")
+        else:
+            st.session_state[STATE_CURATOR] = ""
+            st.session_state[STATE_CURATOR_NAME] = ""
         ctx = source_context(selected_source_id, manifest_df)
         st.sidebar.caption(f"TTL: `{ctx.download_ttl.name}`")
         st.sidebar.caption(f"Terms: `{ctx.terms_tsv.name}`")

@@ -51,6 +51,8 @@ REQUIRED_COLUMNS = [
     "canonical_term_label",
     "canonical_term_source",
     "reviewer",
+    "reviewer_name",
+    "curator_name",
     "date_reviewed",
     "logs",
     "curation_comment",
@@ -147,6 +149,7 @@ STATE_SELECTED_ALIGNMENT = "curation_selected_alignment_id"
 STATE_KEPT_LEFT_TERMS = "curation_kept_left_terms"
 STATE_LEFT_TERM_INDEX = "curation_left_term_index"
 STATE_CURATOR = "active_curator"
+STATE_CURATOR_NAME = "active_curator_name"
 
 
 def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
@@ -196,6 +199,8 @@ def _autosave_if_dirty(queue_file: str, review_file: str) -> None:
 def _set_review_fields(df: pd.DataFrame, idx: int, reviewer: str) -> None:
     if reviewer.strip():
         df.at[idx, "reviewer"] = reviewer.strip()
+        reviewer_name = str(st.session_state.get(STATE_CURATOR_NAME, "") or "").strip()
+        df.at[idx, "reviewer_name"] = reviewer_name
     df.at[idx, "date_reviewed"] = utc_now_timestamp()
 
 
@@ -1194,10 +1199,11 @@ def render() -> None:
     st.caption(f"Local queue: `{queue_file}`")
     st.caption(f"Review ledger: `{review_file}`")
     active_curator = str(st.session_state.get(STATE_CURATOR, "") or "").strip()
-    if active_curator:
-        st.caption(f"Active curator: `{active_curator}`")
+    active_curator_name = str(st.session_state.get(STATE_CURATOR_NAME, "") or "").strip()
+    if active_curator and active_curator_name:
+        st.caption(f"Active curator: `{active_curator_name}` ({active_curator})")
     else:
-        st.error("Set a Curator name in the left sidebar before starting curation.")
+        st.error("Set a valid Curator ORCID with a resolvable public name in the left sidebar before starting curation.")
         return
 
     if (
@@ -1611,7 +1617,10 @@ def render() -> None:
                         new_row["bioportal_search_url"] = _bioportal_search_url(left_label)
                         new_row["status"] = "needs_review"
                         new_row["curator"] = "auto"
+                        new_row["curator_name"] = ""
                         new_row["reviewer"] = active_curator
+                        new_row["reviewer_name"] = active_curator_name
+                        new_row["date_added"] = utc_now_timestamp()
                         new_row["date_reviewed"] = ""
                         new_row["logs"] = (
                             f"Manual {entity_kind} candidate added by URL with ontology id '{ontology_id}'."
@@ -1679,6 +1688,7 @@ def render() -> None:
                         df.at[idx, "date_reviewed"] = utc_now_timestamp()
                         if active_curator:
                             df.at[idx, "reviewer"] = active_curator
+                            df.at[idx, "reviewer_name"] = active_curator_name
 
                 st.session_state[STATE_DIRTY] = True
                 st.session_state[STATE_LEFT_TERM_INDEX] = min(selected_idx + 1, len(left_keys) - 1)
@@ -1711,6 +1721,7 @@ def render() -> None:
                     df.at[idx, "date_reviewed"] = utc_now_timestamp()
                     if active_curator:
                         df.at[idx, "reviewer"] = active_curator
+                        df.at[idx, "reviewer_name"] = active_curator_name
 
                 kept_left_terms.discard(left_term_key)
                 st.session_state[STATE_KEPT_LEFT_TERMS] = sorted(kept_left_terms)

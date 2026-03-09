@@ -96,7 +96,8 @@ Open `registry/work/pair_alignment_candidates_emi.tsv` and curate rows there:
   - `canonical_term_source`
 
 Optional:
-- set `reviewer`
+- set `reviewer` to a valid ORCID
+- ensure `reviewer_name` matches the public ORCID name
 - adjust `relation`
 - update `notes`
 
@@ -106,7 +107,7 @@ Alternative (recommended) lightweight reviewer UI in terminal:
 scripts/review_pair_candidates.py \
   --candidates-file registry/work/pair_alignment_candidates_emi.tsv \
   --status-filter needs_review \
-  --reviewer your_name
+  --reviewer 0000-0002-1825-0097
 ```
 
 Actions per row:
@@ -115,6 +116,11 @@ Actions per row:
 - `3` approve-manual (prompts canonical IRI/label/source)
 - `4` reject
 - `5` skip
+
+Reviewer identity rules:
+- `curator` may be `auto` for generated rows, or a valid ORCID for manual additions.
+- `reviewer` must be a valid ORCID for any reviewed row.
+- `curator_name` and `reviewer_name` store the public display names resolved from ORCID.
 
 ## 4) Validate
 

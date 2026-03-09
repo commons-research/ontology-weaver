@@ -30,14 +30,19 @@ This repository uses a one-TSV-per-schema review workflow plus local derived exp
 - `canonical_term_source`
 - `status`
 - `curator`
+- `curator_name`
+- `reviewer`
+- `reviewer_name`
 - `date_added`
 
 ## Allowed values
 - `alignment_id`:
   - review ledger / local queue rows: `CAND_0001`, `CAND_0002`, ...
-- `relation`: `exact|close|broad|narrow|related`
+- `relation`: `exact|close|broad|narrow|related|owl:*|rdfs:*|skos:*` from the supported mapping set
 - `status`: `needs_review|approved|rejected|deprecated`
 - `canonical_from`: `left|right|manual` (or empty before approval)
+- `curator`: `auto` or a valid ORCID
+- `reviewer`: empty on open rows, valid ORCID on reviewed rows
 
 ## Decision rules
 - If `status=approved`, canonical fields are required:
@@ -45,8 +50,11 @@ This repository uses a one-TSV-per-schema review workflow plus local derived exp
   - `canonical_term_iri`
   - `canonical_term_label`
   - `canonical_term_source`
+- If `curator` is an ORCID, `curator_name` is required.
+- If `reviewer` is set, `reviewer_name` is required.
+- If `status` is `approved|rejected|deprecated`, `reviewer` must be present and must be a valid ORCID.
 - `match_score` must be numeric in `[0,1]`.
-- `left_term_iri` and `right_term_iri` must be present.
+- `left_term_iri` must be present. `right_term_iri` may be empty only for placeholder local queue rows still in `needs_review`.
 
 ## Timestamp format
 - Accepted:

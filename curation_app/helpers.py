@@ -3,11 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
 from pathlib import Path
 import shlex
 import sqlite3
 import subprocess
 import sys
+import urllib.request
+from urllib.error import URLError
 from typing import Iterable
 
 import pandas as pd
@@ -16,6 +19,7 @@ import streamlit as st
 from curation_app.config import ROOT_DIR
 
 FINAL_REVIEW_STATUSES = {"approved"}
+ORCID_RECORD_API = "https://pub.orcid.org/v3.0"
 
 
 @dataclass(frozen=True)
@@ -196,6 +200,74 @@ def normalize_notes_for_approval(notes: str) -> str:
     if not text or ("auto-suggested" in lower and "before approval" in lower):
         return "Approved after manual review."
     return text
+
+
+def normalize_orcid(value: str) -> str:
+    """Normalize raw ORCID input to canonical hyphenated form."""
+    text = (value or "").strip()
+    if not text:
+        return ""
+    if text.lower().startswith("https://orcid.org/"):
+        text = text.rsplit("/", 1)[-1]
+    digits = text.replace("-", "").upper()
+    if len(digits) != 16:
+        return text
+    return f"{digits[0:4]}-{digits[4:8]}-{digits[8:12]}-{digits[12:16]}"
+
+
+def is_valid_orcid(value: str) -> bool:
+    """Validate ORCID format and checksum."""
+    normalized = normalize_orcid(value)
+    parts = normalized.split("-")
+    if len(parts) != 4 or any(len(part) != 4 for part in parts):
+        return False
+    digits = "".join(parts).upper()
+    if not digits[:-1].isdigit() or not (digits[-1].isdigit() or digits[-1] == "X"):
+        return False
+
+    total = 0
+    for char in digits[:-1]:
+        total = (total + int(char)) * 2
+    remainder = total % 11
+    result = (12 - remainder) % 11
+    checksum = "X" if result == 10 else str(result)
+    return checksum == digits[-1]
+
+
+@st.cache_data(show_spinner=False, ttl=86400)
+def fetch_orcid_display_name(orcid: str) -> tuple[str, str]:
+    """Fetch public display name from the ORCID public API.
+
+    Returns (display_name, error_message). `display_name` is empty when not found.
+    """
+    normalized = normalize_orcid(orcid)
+    if not is_valid_orcid(normalized):
+        return "", "Invalid ORCID format."
+
+    url = f"{ORCID_RECORD_API}/{normalized}/person"
+    request = urllib.request.Request(url, headers={"Accept": "application/json"})
+    try:
+        with urllib.request.urlopen(request, timeout=5) as response:
+            payload = json.loads(response.read().decode("utf-8", errors="replace"))
+    except URLError:
+        return "", "ORCID lookup failed."
+    except Exception:
+        return "", "ORCID lookup failed."
+
+    name_obj = payload.get("name", {}) if isinstance(payload, dict) else {}
+    given = ""
+    family = ""
+    if isinstance(name_obj, dict):
+        given_obj = name_obj.get("given-names", {})
+        family_obj = name_obj.get("family-name", {})
+        if isinstance(given_obj, dict):
+            given = str(given_obj.get("value", "") or "").strip()
+        if isinstance(family_obj, dict):
+            family = str(family_obj.get("value", "") or "").strip()
+    display_name = " ".join(part for part in (given, family) if part).strip()
+    if display_name:
+        return display_name, ""
+    return "", "No public name found for this ORCID."
 
 
 def should_track_review_row(row: dict[str, object] | pd.Series) -> bool:

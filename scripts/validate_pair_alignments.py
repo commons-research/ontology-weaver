@@ -22,8 +22,26 @@ DATETIME_RE = re.compile(
     r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$"
 )
 STATUS_VALUES = {"needs_review", "approved", "rejected", "deprecated"}
-RELATION_VALUES = {"exact", "close", "broad", "narrow", "related"}
+RELATION_VALUES = {
+    "exact",
+    "close",
+    "broad",
+    "narrow",
+    "related",
+    "owl:equivalentClass",
+    "owl:equivalentProperty",
+    "rdfs:subClassOf",
+    "rdfs:subPropertyOf",
+    "skos:exactMatch",
+    "skos:closeMatch",
+    "skos:broadMatch",
+    "skos:narrowMatch",
+    "skos:relatedMatch",
+    "skos:mappingRelation",
+    "owl:disjointUnionOf",
+}
 CANONICAL_FROM_VALUES = {"", "left", "right", "manual"}
+ORCID_RE = re.compile(r"^\d{4}-\d{4}-\d{4}-\d{3}[\dX]$")
 REQUIRED_COLUMNS = [
     "alignment_id",
     "left_source",
@@ -42,6 +60,9 @@ REQUIRED_COLUMNS = [
     "canonical_term_source",
     "status",
     "curator",
+    "curator_name",
+    "reviewer",
+    "reviewer_name",
     "date_added",
 ]
 
@@ -104,6 +125,30 @@ def is_valid_score(value: str) -> bool:
     return 0.0 <= number <= 1.0
 
 
+def normalize_orcid(value: str) -> str:
+    text = (value or "").strip()
+    if text.lower().startswith("https://orcid.org/"):
+        text = text.rsplit("/", 1)[-1]
+    digits = text.replace("-", "").upper()
+    if len(digits) == 16:
+        return f"{digits[0:4]}-{digits[4:8]}-{digits[8:12]}-{digits[12:16]}"
+    return text
+
+
+def is_valid_orcid(value: str) -> bool:
+    normalized = normalize_orcid(value)
+    if not ORCID_RE.fullmatch(normalized):
+        return False
+    digits = normalized.replace("-", "")
+    total = 0
+    for char in digits[:-1]:
+        total = (total + int(char)) * 2
+    remainder = total % 11
+    result = (12 - remainder) % 11
+    checksum = "X" if result == 10 else str(result)
+    return checksum == digits[-1]
+
+
 def validate_file(path: Path, kind: str = "auto") -> list[str]:
     """Validate pair alignment file and return all errors."""
     errors: list[str] = []
@@ -140,25 +185,29 @@ def validate_file(path: Path, kind: str = "auto") -> list[str]:
         canonical_term_source = (row.get("canonical_term_source", "") or "").strip()
         status = (row.get("status", "") or "").strip()
         curator = (row.get("curator", "") or "").strip()
+        curator_name = (row.get("curator_name", "") or "").strip()
+        reviewer = (row.get("reviewer", "") or "").strip()
+        reviewer_name = (row.get("reviewer_name", "") or "").strip()
         date_added = (row.get("date_added", "") or "").strip()
         date_reviewed = (row.get("date_reviewed", "") or "").strip()
+        is_placeholder = status == "needs_review" and not right_iri
 
-        if (
+        missing_required = (
             not alignment_id
             or not left_source
             or not left_iri
             or not left_label
             or not right_source
-            or not right_iri
-            or not right_label
+            or (not right_iri and not is_placeholder)
+            or (not right_label and not is_placeholder)
             or not match_method
-            or not match_score
-            or not relation
+            or (not match_score and not is_placeholder)
             or not suggestion_source
             or not status
             or not curator
             or not date_added
-        ):
+        )
+        if missing_required:
             errors.append(f"Row {line_no}: required field is empty")
 
         if not alignment_id_re.fullmatch(alignment_id):
@@ -171,11 +220,26 @@ def validate_file(path: Path, kind: str = "auto") -> list[str]:
         if not is_valid_score(match_score):
             errors.append(f"Row {line_no}: match_score must be between 0 and 1")
 
-        if relation not in RELATION_VALUES:
+        if relation and relation not in RELATION_VALUES:
             errors.append(f"Row {line_no}: invalid relation: {relation}")
 
         if status not in STATUS_VALUES:
             errors.append(f"Row {line_no}: invalid status: {status}")
+
+        if curator != "auto" and not is_valid_orcid(curator):
+            errors.append(f"Row {line_no}: curator must be 'auto' or a valid ORCID: {curator}")
+
+        if curator and curator != "auto" and not curator_name:
+            errors.append(f"Row {line_no}: curator_name is required when curator is an ORCID")
+
+        if reviewer and not is_valid_orcid(reviewer):
+            errors.append(f"Row {line_no}: reviewer must be a valid ORCID when set: {reviewer}")
+
+        if reviewer and not reviewer_name:
+            errors.append(f"Row {line_no}: reviewer_name is required when reviewer is set")
+
+        if status in {"approved", "rejected", "deprecated"} and not reviewer:
+            errors.append(f"Row {line_no}: reviewed rows require reviewer ORCID")
 
         if canonical_from not in CANONICAL_FROM_VALUES:
             errors.append(f"Row {line_no}: invalid canonical_from: {canonical_from}")
@@ -190,7 +254,7 @@ def validate_file(path: Path, kind: str = "auto") -> list[str]:
                 f"Row {line_no}: invalid date_reviewed (expected YYYY-MM-DD or ISO datetime): {date_reviewed}"
             )
 
-        if status == "approved" and relation not in {"exact", "close", "broad", "narrow", "related"}:
+        if status == "approved" and relation not in RELATION_VALUES:
             errors.append(f"Row {line_no}: approved rows require a valid relation")
 
         has_any_canonical = bool(canonical_term_iri or canonical_term_label or canonical_term_source)
@@ -210,7 +274,7 @@ def validate_file(path: Path, kind: str = "auto") -> list[str]:
                 f"Row {line_no}: status=approved requires canonical_term_iri/label/source"
             )
 
-        if left_source.lower() == right_source.lower() and left_iri == right_iri:
+        if right_iri and left_source.lower() == right_source.lower() and left_iri == right_iri:
             errors.append(
                 f"Row {line_no}: left and right term are identical; pairwise alignment should link two distinct terms"
             )
