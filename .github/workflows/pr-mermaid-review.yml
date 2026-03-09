@@ -34,11 +34,6 @@ jobs:
       - name: Install dependencies
         run: uv sync --frozen
 
-      - name: Download source TTLs for richer Mermaid graphs
-        continue-on-error: true
-        run: |
-          uv run python scripts/download_external_sources.py --all --force
-
       - name: Generate Mermaid review markdown
         run: |
           uv run python scripts/generate_pr_mermaid_review.py \

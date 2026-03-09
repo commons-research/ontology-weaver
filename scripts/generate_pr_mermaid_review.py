@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate a PR comment with focused before/after Mermaid graphs for changed ledger rows."""
+"""Generate a PR review comment with focused before/after Mermaid graphs."""
 
 from __future__ import annotations
 
@@ -26,7 +26,6 @@ from curation_app.pages.finalize_validate import (
 )
 from curation_app.pages.view_schema import _build_mermaid, _write_merged_ttl
 
-
 MARKER = "<!-- pr-mermaid-review -->"
 LEDGER_PATTERN = re.compile(r"^registry/pair_alignment_candidates_([A-Za-z0-9_.-]+)\.tsv$")
 
@@ -34,10 +33,30 @@ LEDGER_PATTERN = re.compile(r"^registry/pair_alignment_candidates_([A-Za-z0-9_.-
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Generate Mermaid PR review markdown for changed shared-ledger rows.")
     parser.add_argument("--base-sha", required=True, help="Base commit SHA to diff against.")
-    parser.add_argument("--output", type=Path, required=True, help="Markdown output path.")
-    parser.add_argument("--max-terms", type=int, default=8, help="Maximum number of changed terms to include.")
-    parser.add_argument("--focus-hops", type=int, default=2, help="Connected graph depth for focused Mermaid views.")
-    parser.add_argument("--max-nodes", type=int, default=80, help="Maximum Mermaid nodes per graph.")
+    parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="Markdown output path.",
+    )
+    parser.add_argument(
+        "--max-terms",
+        type=int,
+        default=8,
+        help="Maximum number of changed source terms to include.",
+    )
+    parser.add_argument(
+        "--focus-hops",
+        type=int,
+        default=2,
+        help="Connected graph depth for focused Mermaid views.",
+    )
+    parser.add_argument(
+        "--max-nodes",
+        type=int,
+        default=80,
+        help="Maximum Mermaid nodes per graph.",
+    )
     return parser.parse_args()
 
 
@@ -58,7 +77,9 @@ def changed_ledger_paths(base_sha: str) -> list[Path]:
     paths: list[Path] = []
     for raw in out.splitlines():
         path = raw.strip()
-        if path and LEDGER_PATTERN.match(path):
+        if not path:
+            continue
+        if LEDGER_PATTERN.match(path):
             paths.append(Path(path))
     return sorted(paths)
 
@@ -70,9 +91,9 @@ def read_tsv_text(text: str) -> dict[str, dict[str, str]]:
     reader = csv.DictReader(io.StringIO(text), delimiter="\t")
     rows: dict[str, dict[str, str]] = {}
     for row in reader:
-        iri = str(row.get("source_term_iri", "") or "").strip()
-        if iri:
-            rows[iri] = {k: str(v or "") for k, v in row.items()}
+        key = str(row.get("source_term_iri", "") or "").strip()
+        if key:
+            rows[key] = {k: str(v or "") for k, v in row.items()}
     return rows
 
 
@@ -92,24 +113,83 @@ def read_current_tsv(path: Path) -> dict[str, dict[str, str]]:
 
 def changed_rows(old_rows: dict[str, dict[str, str]], new_rows: dict[str, dict[str, str]]) -> list[dict[str, str]]:
     changed: list[dict[str, str]] = []
-    for iri in sorted(set(old_rows) | set(new_rows)):
+    keys = sorted(set(old_rows) | set(new_rows))
+    for iri in keys:
         old = old_rows.get(iri)
         new = new_rows.get(iri)
         if old == new:
             continue
-        payload = dict(new or old or {})
+        row = new or old or {}
+        payload = dict(row)
         payload["_change_type"] = "modified" if old and new else ("added" if new else "removed")
         changed.append(payload)
     return changed
 
 
-def short_iri(iri: str) -> str:
-    value = str(iri or "").strip()
-    if not value:
-        return ""
-    if "#" in value:
-        return value.rsplit("#", 1)[-1]
-    return value.rstrip("/").rsplit("/", 1)[-1]
+def build_overlay_ttl(source_slug: str, tmpdir: Path) -> tuple[Path, Path]:
+    ledger_path = Path("registry") / f"pair_alignment_candidates_{source_slug}.tsv"
+    source_ttl_path = Path("registry/downloads") / f"{source_slug}.ttl"
+    if not ledger_path.is_file():
+        raise FileNotFoundError(ledger_path)
+    if not source_ttl_path.is_file():
+        raise FileNotFoundError(source_ttl_path)
+
+    df = _ensure_columns(pd.read_csv(ledger_path, sep="\t").fillna(""))
+    replacements, _ = _build_replacements(df)
+    mapping_ttl_text, _, _ = _build_mapping_triples(df)
+
+    mapping_path = tmpdir / f"{source_slug}_mappings.ttl"
+    if mapping_ttl_text.strip():
+        compact_mapping_text, _ = _compact_ttl_iris_with_prefixes(mapping_ttl_text, df, replacements)
+        mapping_path.write_text(compact_mapping_text.strip() + "\n", encoding="utf-8")
+    else:
+        mapping_path.write_text("", encoding="utf-8")
+
+    overlay_path = tmpdir / f"{source_slug}_overlay.ttl"
+    ok, msg = _write_merged_ttl([source_ttl_path, mapping_path], overlay_path)
+    if not ok:
+        raise RuntimeError(msg)
+    return source_ttl_path, overlay_path
+
+
+def parse_mermaid_lines(text: str) -> tuple[list[str], list[str], list[str]]:
+    nodes: list[str] = []
+    edges: list[str] = []
+    clicks: list[str] = []
+    for raw in text.splitlines():
+        line = raw.rstrip()
+        stripped = line.strip()
+        if not stripped or stripped == "flowchart LR":
+            continue
+        if stripped.startswith("click "):
+            clicks.append(stripped)
+        elif "-->" in stripped:
+            edges.append(stripped)
+        else:
+            nodes.append(stripped)
+    return nodes, edges, clicks
+
+
+def prefix_mermaid_ids(lines: list[str], prefix: str) -> list[str]:
+    out: list[str] = []
+    id_pattern = re.compile(r"\bn(\d+)\b")
+    for line in lines:
+        out.append(id_pattern.sub(lambda m: f"{prefix}_n{m.group(1)}", line))
+    return out
+
+
+def combine_mermaid(before_text: str, after_text: str) -> str:
+    before_nodes, before_edges, before_clicks = parse_mermaid_lines(before_text)
+    after_nodes, after_edges, after_clicks = parse_mermaid_lines(after_text)
+
+    lines = ["flowchart LR", "  subgraph Before", "    direction LR"]
+    for line in prefix_mermaid_ids(before_nodes + before_edges + before_clicks, "before"):
+        lines.append(f"    {line}")
+    lines.extend(["  end", "  subgraph After", "    direction LR"])
+    for line in prefix_mermaid_ids(after_nodes + after_edges + after_clicks, "after"):
+        lines.append(f"    {line}")
+    lines.append("  end")
+    return "\n".join(lines) + "\n"
 
 
 def single_node_mermaid(iri: str, label: str) -> str:
@@ -124,91 +204,20 @@ def single_node_mermaid(iri: str, label: str) -> str:
     ) + "\n"
 
 
-def minimal_mapping_mermaid(
-    source_iri: str,
-    source_label: str,
-    canonical_iri: str,
-    canonical_label: str,
-    relation: str,
-) -> str:
-    safe_source = str(source_label or short_iri(source_iri) or source_iri).replace('"', "'")
-    safe_target = str(canonical_label or short_iri(canonical_iri) or canonical_iri).replace('"', "'")
-    safe_source_iri = str(source_iri or "").replace('"', "%22")
-    safe_target_iri = str(canonical_iri or "").replace('"', "%22")
-    edge_label = str(relation or "mapsTo").replace('"', "'")
-    lines = ["flowchart LR", f'  n0["{safe_source}"]']
-    if canonical_iri and canonical_iri != source_iri:
-        lines.append(f'  n1["{safe_target}"]')
-        lines.append(f"  n0 -->|{edge_label}| n1")
-        lines.append(f'  click n1 href "{safe_target_iri}" "Open IRI" _blank')
-    lines.append(f'  click n0 href "{safe_source_iri}" "Open IRI" _blank')
-    return "\n".join(lines) + "\n"
-
-
-def parse_mermaid_lines(text: str) -> tuple[list[str], list[str], list[str]]:
-    nodes: list[str] = []
-    edges: list[str] = []
-    clicks: list[str] = []
-    for raw in text.splitlines():
-        stripped = raw.strip()
-        if not stripped or stripped == "flowchart LR":
-            continue
-        if stripped.startswith("click "):
-            clicks.append(stripped)
-        elif "-->" in stripped:
-            edges.append(stripped)
-        else:
-            nodes.append(stripped)
-    return nodes, edges, clicks
-
-
-def prefix_mermaid_ids(lines: list[str], prefix: str) -> list[str]:
-    pattern = re.compile(r"\bn(\d+)\b")
-    return [pattern.sub(lambda m: f"{prefix}_n{m.group(1)}", line) for line in lines]
-
-
-def combine_mermaid(before_text: str, after_text: str) -> str:
-    before_nodes, before_edges, before_clicks = parse_mermaid_lines(before_text)
-    after_nodes, after_edges, after_clicks = parse_mermaid_lines(after_text)
-    lines = ["flowchart LR", "  subgraph Before", "    direction LR"]
-    for line in prefix_mermaid_ids(before_nodes + before_edges + before_clicks, "before"):
-        lines.append(f"    {line}")
-    lines.extend(["  end", "  subgraph After", "    direction LR"])
-    for line in prefix_mermaid_ids(after_nodes + after_edges + after_clicks, "after"):
-        lines.append(f"    {line}")
-    lines.append("  end")
-    return "\n".join(lines) + "\n"
-
-
-def build_overlay_ttl(source_slug: str, tmpdir: Path) -> tuple[Path | None, Path | None]:
-    ledger_path = Path("registry") / f"pair_alignment_candidates_{source_slug}.tsv"
-    source_ttl_path = Path("registry/downloads") / f"{source_slug}.ttl"
-    if not source_ttl_path.is_file() or not ledger_path.is_file():
-        return None, None
-
-    df = _ensure_columns(pd.read_csv(ledger_path, sep="\t").fillna(""))
-    replacements, _ = _build_replacements(df)
-    mapping_ttl_text, _, _ = _build_mapping_triples(df)
-
-    mapping_path = tmpdir / f"{source_slug}_mappings.ttl"
-    if mapping_ttl_text.strip():
-        compact_mapping_text, _ = _compact_ttl_iris_with_prefixes(mapping_ttl_text, df, replacements)
-        mapping_path.write_text(compact_mapping_text.strip() + "\n", encoding="utf-8")
-    else:
-        mapping_path.write_text("", encoding="utf-8")
-
-    overlay_path = tmpdir / f"{source_slug}_overlay.ttl"
-    ok, _ = _write_merged_ttl([source_ttl_path, mapping_path], overlay_path)
-    if not ok:
-        return source_ttl_path, None
-    return source_ttl_path, overlay_path
+def short_iri(iri: str) -> str:
+    iri = str(iri or "").strip()
+    if not iri:
+        return ""
+    if "#" in iri:
+        return iri.rsplit("#", 1)[-1]
+    return iri.rstrip("/").rsplit("/", 1)[-1]
 
 
 def generate_term_section(
     source_slug: str,
     row: dict[str, str],
-    before_ttl: Path | None,
-    after_ttl: Path | None,
+    before_ttl: Path,
+    after_ttl: Path,
     focus_hops: int,
     max_nodes: int,
 ) -> str:
@@ -223,48 +232,30 @@ def generate_term_section(
     change_type = str(row.get("_change_type", "") or "").strip()
     comment = str(row.get("curation_comment", "") or "").strip()
 
-    if before_ttl is not None and before_ttl.is_file():
-        left_ok, before_graph, left_msg = _build_mermaid(
-            input_ttl=before_ttl,
-            mode="schema",
-            max_nodes=max_nodes,
-            include_external=True,
-            focus_entity_iri=source_iri,
-            focus_max_hops=focus_hops,
-        )
-    else:
-        left_ok = True
-        before_graph = single_node_mermaid(source_iri, source_label)
-        left_msg = "Source TTL unavailable in CI. Rendered isolated source-term fallback node."
-
-    if after_ttl is not None and after_ttl.is_file():
-        right_ok, after_graph, right_msg = _build_mermaid(
-            input_ttl=after_ttl,
-            mode="schema",
-            max_nodes=max_nodes,
-            include_external=True,
-            focus_entity_iri=source_iri,
-            focus_max_hops=focus_hops,
-        )
-    else:
-        right_ok = True
-        after_graph = minimal_mapping_mermaid(source_iri, source_label, canonical_iri, canonical_label, relation)
-        right_msg = "Exported TTL unavailable in CI. Rendered minimal mapping fallback graph."
-
-    if before_graph.strip() == "flowchart LR" or not before_graph.strip():
-        before_graph = single_node_mermaid(source_iri, source_label)
-        left_msg = f"{left_msg} Rendered isolated source-term fallback node."
-    if after_graph.strip() == "flowchart LR" or not after_graph.strip():
-        after_graph = minimal_mapping_mermaid(source_iri, source_label, canonical_iri, canonical_label, relation)
-        right_msg = f"{right_msg} Rendered minimal mapping fallback graph."
+    left_ok, before_graph, left_msg = _build_mermaid(
+        input_ttl=before_ttl,
+        mode="schema",
+        max_nodes=max_nodes,
+        include_external=True,
+        focus_entity_iri=source_iri,
+        focus_max_hops=focus_hops,
+    )
+    right_ok, after_graph, right_msg = _build_mermaid(
+        input_ttl=after_ttl,
+        mode="schema",
+        max_nodes=max_nodes,
+        include_external=True,
+        focus_entity_iri=source_iri,
+        focus_max_hops=focus_hops,
+    )
 
     lines = [f"### `{source_label}`", f"- Source: `{source_iri}`"]
     if canonical_iri:
-        canonical_text = f"`{canonical_label}`"
+        target_text = f"`{canonical_label}`"
         if canonical_source:
-            canonical_text += f" from `{canonical_source}`"
-        canonical_text += f" (`{canonical_iri}`)"
-        lines.append(f"- Canonical: {canonical_text}")
+            target_text += f" from `{canonical_source}`"
+        target_text += f" (`{canonical_iri}`)"
+        lines.append(f"- Canonical: {target_text}")
     if relation:
         lines.append(f"- Relation: `{relation}`")
     if change_type:
@@ -277,12 +268,22 @@ def generate_term_section(
     if comment:
         lines.append(f"- Comment: {comment}")
 
+    before_render = before_graph
+    after_render = after_graph
+    if before_render.strip() == "flowchart LR" or not before_render.strip():
+        before_render = single_node_mermaid(source_iri, source_label)
+        left_msg = f"{left_msg} Rendered isolated source-term fallback node."
+    if after_render.strip() == "flowchart LR" or not after_render.strip():
+        after_render = single_node_mermaid(source_iri, source_label)
+        right_msg = f"{right_msg} Rendered isolated source-term fallback node."
+
     if left_ok and right_ok:
+        combined = combine_mermaid(before_render, after_render)
         lines.extend(
             [
                 "",
                 "```mermaid",
-                combine_mermaid(before_graph, after_graph).rstrip(),
+                combined.rstrip(),
                 "```",
                 "",
                 f"_Before_: {left_msg}",
@@ -290,17 +291,32 @@ def generate_term_section(
             ]
         )
     else:
-        lines.extend(["", f"- Before: {left_msg}", f"- After: {right_msg}"])
+        lines.extend(
+            [
+                "",
+                f"- Mermaid generation fallback for `{source_slug}`.",
+                f"- Before: {left_msg}",
+                f"- After: {right_msg}",
+            ]
+        )
     return "\n".join(lines)
 
 
 def build_comment(base_sha: str, max_terms: int, focus_hops: int, max_nodes: int) -> str:
     ledger_paths = changed_ledger_paths(base_sha)
     if not ledger_paths:
-        return "\n".join([MARKER, "## Mermaid Review", "", "No changed shared-ledger TSV rows were detected in this PR."]) + "\n"
+        return "\n".join(
+            [
+                MARKER,
+                "## Mermaid Review",
+                "",
+                "No changed shared-ledger TSV rows were detected in this PR.",
+            ]
+        ) + "\n"
 
-    sections = [MARKER, "## Mermaid Review", "", "Auto-generated focused before/after graphs for changed shared-ledger terms."]
+    sections: list[str] = [MARKER, "## Mermaid Review", "", "Auto-generated focused before/after graphs for changed shared-ledger terms."]
     total_changed = 0
+
     with tempfile.TemporaryDirectory(prefix="pr_mermaid_") as tmp:
         tmpdir = Path(tmp)
         for ledger_path in ledger_paths:
@@ -314,14 +330,17 @@ def build_comment(base_sha: str, max_terms: int, focus_hops: int, max_nodes: int
             if not changed:
                 continue
             total_changed += len(changed)
-            before_ttl, after_ttl = build_overlay_ttl(source_slug, tmpdir)
+            before_ttl, overlay_ttl = build_overlay_ttl(source_slug, tmpdir)
             sections.extend(["", f"## Source `{source_slug}`", ""])
             for row in changed[:max_terms]:
-                sections.append(generate_term_section(source_slug, row, before_ttl, after_ttl, focus_hops, max_nodes))
+                sections.append(generate_term_section(source_slug, row, before_ttl, overlay_ttl, focus_hops, max_nodes))
                 sections.append("")
             if len(changed) > max_terms:
-                sections.append(f"_Truncated_: showing {max_terms} of {len(changed)} changed term(s) for `{source_slug}`.")
+                sections.append(
+                    f"_Truncated_: showing {max_terms} of {len(changed)} changed term(s) for `{source_slug}`."
+                )
                 sections.append("")
+
     if total_changed == 0:
         sections.extend(["", "No changed shared-ledger TSV rows were detected in this PR."])
     return "\n".join(sections).rstrip() + "\n"
@@ -329,7 +348,12 @@ def build_comment(base_sha: str, max_terms: int, focus_hops: int, max_nodes: int
 
 def main() -> None:
     args = parse_args()
-    comment = build_comment(args.base_sha, args.max_terms, args.focus_hops, args.max_nodes)
+    comment = build_comment(
+        base_sha=args.base_sha,
+        max_terms=args.max_terms,
+        focus_hops=args.focus_hops,
+        max_nodes=args.max_nodes,
+    )
     args.output.parent.mkdir(parents=True, exist_ok=True)
     args.output.write_text(comment, encoding="utf-8")
 
