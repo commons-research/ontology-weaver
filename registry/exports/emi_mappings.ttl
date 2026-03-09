@@ -1,3 +1,0 @@
-# --- Generated alignment mappings (OWL/SKOS) ---
-<https://w3id.org/emi#ChemicalEntity> <http://www.w3.org/2002/07/owl#equivalentClass> <http://semanticscience.org/resource/CHEMINF_000000> .
-<https://w3id.org/emi#InChIKey> <http://www.w3.org/2002/07/owl#equivalentClass> <http://semanticscience.org/resource/CHEMINF_000059> .
