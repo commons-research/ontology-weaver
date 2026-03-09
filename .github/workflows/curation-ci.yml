@@ -1,0 +1,56 @@
+name: curation-ci
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+
+jobs:
+  curation-ci:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up uv
+        uses: astral-sh/setup-uv@v5
+
+      - name: Install dependencies
+        run: uv sync --frozen
+
+      - name: Compile Python sources
+        run: |
+          uv run python -m py_compile \
+            streamlit_app.py \
+            curation_app/*.py \
+            curation_app/pages/*.py \
+            scripts/*.py
+
+      - name: Validate shared ledgers
+        run: |
+          uv run python scripts/validate_pair_alignments.py registry/pair_alignment_candidates_emi.tsv --kind candidate
+          uv run python scripts/validate_pair_alignments.py registry/pair_alignment_candidates_enpkg.tsv --kind candidate
+
+      - name: Smoke-test SQLite sync and reconciled exports
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for source in emi enpkg; do
+            tmpdir="$(mktemp -d)"
+            uv run python scripts/sync_alignment_sqlite.py \
+              --db "${tmpdir}/${source}.sqlite" \
+              --pair-candidates "registry/work/pair_alignment_candidates_${source}.tsv" \
+              --pair-alignments "registry/pair_alignment_candidates_${source}.tsv" \
+              --reconciled-output "${tmpdir}/${source}_reconciled.tsv" \
+              --grouped-output "${tmpdir}/${source}_grouped.tsv"
+          done
