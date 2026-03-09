@@ -159,6 +159,67 @@ STATE_CURATOR = "active_curator"
 STATE_CURATOR_NAME = "active_curator_name"
 
 
+def _prepare_review_display_df(review_df: pd.DataFrame) -> pd.DataFrame:
+    out = review_df.copy()
+    for col in [
+        "source_term_source",
+        "source_term_iri",
+        "source_term_label",
+        "source_term_kind",
+        "canonical_term_iri",
+        "canonical_term_label",
+        "canonical_term_source",
+        "canonical_term_kind",
+        "relation",
+        "status",
+        "curator",
+        "curator_name",
+        "reviewer",
+        "reviewer_name",
+        "date_reviewed",
+        "curation_comment",
+    ]:
+        if col not in out.columns:
+            out[col] = ""
+    display = out[
+        [
+            "source_term_source",
+            "source_term_iri",
+            "source_term_label",
+            "source_term_kind",
+            "canonical_term_iri",
+            "canonical_term_label",
+            "canonical_term_source",
+            "canonical_term_kind",
+            "relation",
+            "status",
+            "reviewer_name",
+            "reviewer",
+            "date_reviewed",
+            "curation_comment",
+        ]
+    ].copy()
+    display = display.rename(
+        columns={
+            "source_term_source": "source",
+            "source_term_iri": "source_term_iri",
+            "source_term_label": "source_term_label",
+            "source_term_kind": "source_term_kind",
+            "canonical_term_iri": "canonical_term_iri",
+            "canonical_term_label": "canonical_term_label",
+            "canonical_term_source": "canonical_term_source",
+            "canonical_term_kind": "canonical_term_kind",
+            "relation": "relation",
+            "status": "status",
+            "reviewer_name": "reviewer_name",
+            "reviewer": "reviewer_orcid",
+            "date_reviewed": "date_reviewed",
+            "curation_comment": "curation_comment",
+        }
+    )
+    return display.sort_values(by=["date_reviewed", "source_term_label"], ascending=[False, True], na_position="last")
+
+
 def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
     if "logs" not in out.columns:
@@ -1285,6 +1346,7 @@ def render() -> None:
         st.caption(catalog_msg)
 
     df = st.session_state[STATE_DF]
+    review_df = read_tsv(review_file)
     if df.empty and not to_path(queue_file).is_file():
         st.warning("No local queue found for this source. Please run Generate Pairwise Candidates first.")
         return
@@ -1302,6 +1364,40 @@ def render() -> None:
     st.subheader("Local Queue Progress")
     st.caption("Counts source terms in the local queue that no longer have any `needs_review` rows.")
     st.progress(progress, text=f"{curated_terms}/{total_terms} term(s) processed locally ({progress * 100:.1f}%)")
+
+    shared_terms = int(review_df["source_term_iri"].astype(str).str.strip().ne("").sum()) if not review_df.empty else 0
+    with st.expander(f"Shared Approved Decisions ({shared_terms})", expanded=False):
+        st.caption("Read-only view of the versioned shared ledger. Use this to see what is already approved and by whom.")
+        if review_df.empty:
+            st.info("No approved shared decisions recorded yet for this source.")
+        else:
+            shared_search = st.text_input(
+                "Search shared decisions",
+                value="",
+                key="shared_review_search",
+                help="Filter the shared approved ledger by source/canonical labels, IRIs, reviewer, or comment.",
+            )
+            shared_display_df = _prepare_review_display_df(review_df)
+            if shared_search.strip():
+                token = shared_search.strip().lower()
+                hay = (
+                    shared_display_df["source_term_label"].astype(str).str.lower()
+                    + " "
+                    + shared_display_df["canonical_term_label"].astype(str).str.lower()
+                    + " "
+                    + shared_display_df["source_term_iri"].astype(str).str.lower()
+                    + " "
+                    + shared_display_df["canonical_term_iri"].astype(str).str.lower()
+                    + " "
+                    + shared_display_df["reviewer_name"].astype(str).str.lower()
+                    + " "
+                    + shared_display_df["reviewer_orcid"].astype(str).str.lower()
+                    + " "
+                    + shared_display_df["curation_comment"].astype(str).str.lower()
+                )
+                shared_display_df = shared_display_df[hay.str.contains(token, na=False)]
+            st.caption(f"Shared ledger rows: {len(shared_display_df)}")
+            render_clickable_dataframe(shared_display_df, use_container_width=True, hide_index=True)
 
     st.subheader("Filter")
     available_statuses = sorted(df["status"].dropna().unique().tolist())
@@ -1359,6 +1455,38 @@ def render() -> None:
         st.session_state[STATE_LEFT_TERM_INDEX] = selected_idx
         left_source, left_iri, left_label = selected_left
         left_term_key = f"{left_source}|{left_iri}"
+        shared_left_rows = pd.DataFrame()
+        if not review_df.empty and "source_term_iri" in review_df.columns:
+            shared_left_rows = review_df[review_df["source_term_iri"].astype(str) == str(left_iri)].copy()
+        if not shared_left_rows.empty:
+            shared_left_rows = shared_left_rows.sort_values(
+                by="date_reviewed",
+                ascending=False,
+                na_position="last",
+            )
+            approved_row = shared_left_rows.iloc[0]
+            canonical_label = str(approved_row.get("canonical_term_label", "") or "").strip()
+            canonical_source = str(approved_row.get("canonical_term_source", "") or "").strip()
+            reviewer_name = str(approved_row.get("reviewer_name", "") or "").strip()
+            reviewer_orcid = str(approved_row.get("reviewer", "") or "").strip()
+            date_reviewed = str(approved_row.get("date_reviewed", "") or "").strip()
+            relation = str(approved_row.get("relation", "") or "").strip()
+            summary_bits = [f"Approved shared decision: `{canonical_label}`"]
+            if canonical_source:
+                summary_bits.append(f"source `{canonical_source}`")
+            if relation:
+                summary_bits.append(f"relation `{relation}`")
+            if reviewer_name or reviewer_orcid:
+                reviewer_text = reviewer_name or reviewer_orcid
+                if reviewer_name and reviewer_orcid:
+                    reviewer_text = f"{reviewer_name} ({reviewer_orcid})"
+                summary_bits.append(f"reviewed by {reviewer_text}")
+            if date_reviewed:
+                summary_bits.append(f"on `{date_reviewed}`")
+            st.info(" | ".join(summary_bits))
+            comment_text = str(approved_row.get("curation_comment", "") or "").strip()
+            if comment_text:
+                st.caption(f"Shared curation comment: {comment_text}")
         left_row_series = left_terms_df[
             (left_terms_df["left_source"] == left_source) & (left_terms_df["left_term_iri"] == left_iri)
         ].iloc[0]
@@ -1825,7 +1953,6 @@ def render() -> None:
         key="download_working_candidates",
     )
 
-    review_df = read_tsv(review_file)
     if not review_df.empty or to_path(review_file).is_file():
         st.download_button(
             label="Download review ledger TSV",
