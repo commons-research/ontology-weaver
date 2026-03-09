@@ -157,6 +157,7 @@ STATE_KEPT_LEFT_TERMS = "curation_kept_left_terms"
 STATE_LEFT_TERM_INDEX = "curation_left_term_index"
 STATE_CURATOR = "active_curator"
 STATE_CURATOR_NAME = "active_curator_name"
+STATE_REVIEW_SYNC_IRIS = "curation_review_sync_iris"
 
 
 def _prepare_review_display_df(review_df: pd.DataFrame) -> pd.DataFrame:
@@ -251,9 +252,11 @@ def _save_queue_and_sync_review(queue_file: str, review_file: str) -> None:
     queue_df = st.session_state[STATE_DF]
     write_tsv(queue_df, queue_file)
     review_df = read_tsv(review_file)
-    synced_review_df = sync_review_ledger(review_df, queue_df)
+    touched_source_iris = set(str(x or "").strip() for x in st.session_state.get(STATE_REVIEW_SYNC_IRIS, set()))
+    synced_review_df = sync_review_ledger(review_df, queue_df, touched_source_iris=touched_source_iris)
     write_tsv(synced_review_df, review_file)
     st.session_state[STATE_MTIME] = _file_mtime(queue_file)
+    st.session_state[STATE_REVIEW_SYNC_IRIS] = set()
 
 
 def _autosave_if_dirty(queue_file: str, review_file: str) -> None:
@@ -262,6 +265,15 @@ def _autosave_if_dirty(queue_file: str, review_file: str) -> None:
     _save_queue_and_sync_review(queue_file, review_file)
     st.session_state[STATE_DIRTY] = False
     st.caption("Auto-saved local queue and synced reviewed decisions.")
+
+
+def _mark_review_sync_iri(source_term_iri: str) -> None:
+    iri = str(source_term_iri or "").strip()
+    if not iri:
+        return
+    pending = set(str(x or "").strip() for x in st.session_state.get(STATE_REVIEW_SYNC_IRIS, set()))
+    pending.add(iri)
+    st.session_state[STATE_REVIEW_SYNC_IRIS] = pending
 
 
 def _set_review_fields(df: pd.DataFrame, idx: int, reviewer: str) -> None:
@@ -1298,9 +1310,12 @@ def render() -> None:
         st.session_state[STATE_DIRTY] = False
         st.session_state[STATE_MTIME] = _file_mtime(queue_file)
         st.session_state[STATE_KEPT_LEFT_TERMS] = []
+        st.session_state[STATE_REVIEW_SYNC_IRIS] = set()
 
     if STATE_KEPT_LEFT_TERMS not in st.session_state:
         st.session_state[STATE_KEPT_LEFT_TERMS] = []
+    if STATE_REVIEW_SYNC_IRIS not in st.session_state:
+        st.session_state[STATE_REVIEW_SYNC_IRIS] = set()
 
     current_mtime = _file_mtime(queue_file)
     loaded_mtime = st.session_state.get(STATE_MTIME)
@@ -1321,6 +1336,7 @@ def render() -> None:
             st.session_state[STATE_DF] = _load_df(queue_file)
             st.session_state[STATE_DIRTY] = False
             st.session_state[STATE_MTIME] = _file_mtime(queue_file)
+            st.session_state[STATE_REVIEW_SYNC_IRIS] = set()
     with col_save:
         if st.button("Save local queue", type="primary"):
             _save_queue_and_sync_review(queue_file, review_file)
@@ -1882,6 +1898,7 @@ def render() -> None:
                             df.at[idx, "reviewer_name"] = active_curator_name
 
                 st.session_state[STATE_DIRTY] = True
+                _mark_review_sync_iri(left_iri)
                 st.session_state[STATE_LEFT_TERM_INDEX] = min(selected_idx + 1, len(left_keys) - 1)
                 st.session_state[STATE_SELECTED_ALIGNMENT] = ""
                 st.rerun()
@@ -1919,6 +1936,7 @@ def render() -> None:
                 kept_left_terms.discard(left_term_key)
                 st.session_state[STATE_KEPT_LEFT_TERMS] = sorted(kept_left_terms)
                 st.session_state[STATE_DIRTY] = True
+                _mark_review_sync_iri(left_iri)
                 st.session_state[STATE_LEFT_TERM_INDEX] = min(selected_idx + 1, len(left_keys) - 1)
                 st.session_state[STATE_SELECTED_ALIGNMENT] = ""
                 st.rerun()

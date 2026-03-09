@@ -347,7 +347,11 @@ def project_review_row(row: dict[str, object] | pd.Series) -> dict[str, str]:
     }
 
 
-def sync_review_ledger(review_df: pd.DataFrame, queue_df: pd.DataFrame) -> pd.DataFrame:
+def sync_review_ledger(
+    review_df: pd.DataFrame,
+    queue_df: pd.DataFrame,
+    touched_source_iris: set[str] | None = None,
+) -> pd.DataFrame:
     """Upsert finalized rows from the local queue into the versioned review ledger."""
     merged_cols = list(LEDGER_COLUMNS)
     if review_df.empty:
@@ -360,6 +364,11 @@ def sync_review_ledger(review_df: pd.DataFrame, queue_df: pd.DataFrame) -> pd.Da
         ledger = ledger.reindex(columns=merged_cols, fill_value="")
 
     tracked = queue_df[queue_df.apply(should_track_review_row, axis=1)].copy()
+    if touched_source_iris is not None:
+        touched = {str(value or "").strip() for value in touched_source_iris if str(value or "").strip()}
+        if not touched:
+            return ledger.reindex(columns=merged_cols, fill_value="")
+        tracked = tracked[tracked["left_term_iri"].astype(str).isin(touched)].copy()
     if tracked.empty:
         return ledger.reindex(columns=merged_cols, fill_value="")
 
