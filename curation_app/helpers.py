@@ -15,6 +15,8 @@ import streamlit as st
 
 from curation_app.config import ROOT_DIR
 
+FINAL_REVIEW_STATUSES = {"approved"}
+
 
 @dataclass(frozen=True)
 class CommandResult:
@@ -194,6 +196,83 @@ def normalize_notes_for_approval(notes: str) -> str:
     if not text or ("auto-suggested" in lower and "before approval" in lower):
         return "Approved after manual review."
     return text
+
+
+def should_track_review_row(row: dict[str, object] | pd.Series) -> bool:
+    """Return True when a row belongs in the versioned review ledger."""
+    status = str((row.get("status", "") if hasattr(row, "get") else "") or "").strip().lower()
+    return status in FINAL_REVIEW_STATUSES
+
+
+def pair_identity(row: dict[str, object] | pd.Series) -> tuple[str, str, str, str]:
+    """Build a stable pair identity for deduplicating ledger rows."""
+    return (
+        str((row.get("left_source", "") if hasattr(row, "get") else "") or "").strip().lower(),
+        str((row.get("left_term_iri", "") if hasattr(row, "get") else "") or "").strip(),
+        str((row.get("right_source", "") if hasattr(row, "get") else "") or "").strip().lower(),
+        str((row.get("right_term_iri", "") if hasattr(row, "get") else "") or "").strip(),
+    )
+
+
+def sync_review_ledger(review_df: pd.DataFrame, queue_df: pd.DataFrame) -> pd.DataFrame:
+    """Upsert finalized rows from the local queue into the versioned review ledger."""
+    if review_df.empty:
+        merged_cols = list(queue_df.columns)
+        ledger = pd.DataFrame(columns=merged_cols)
+    else:
+        merged_cols = list(review_df.columns)
+        for col in queue_df.columns:
+            if col not in merged_cols:
+                merged_cols.append(col)
+        ledger = review_df.copy()
+        for col in merged_cols:
+            if col not in ledger.columns:
+                ledger[col] = ""
+
+    tracked = queue_df[queue_df.apply(should_track_review_row, axis=1)].copy()
+    if tracked.empty:
+        return ledger.reindex(columns=merged_cols, fill_value="")
+
+    if ledger.empty:
+        ledger = pd.DataFrame(columns=merged_cols)
+
+    for col in merged_cols:
+        if col not in tracked.columns:
+            tracked[col] = ""
+    tracked = tracked.reindex(columns=merged_cols, fill_value="")
+
+    id_to_idx: dict[str, int] = {}
+    pair_to_idx: dict[tuple[str, str, str, str], int] = {}
+    for idx, row in ledger.iterrows():
+        alignment_id = str(row.get("alignment_id", "") or "").strip()
+        if alignment_id:
+            id_to_idx[alignment_id] = idx
+        pair_to_idx[pair_identity(row)] = idx
+
+    for _, row in tracked.iterrows():
+        alignment_id = str(row.get("alignment_id", "") or "").strip()
+        pair_key = pair_identity(row)
+        existing_idx = None
+        if alignment_id and alignment_id in id_to_idx:
+            existing_idx = id_to_idx[alignment_id]
+        elif pair_key in pair_to_idx:
+            existing_idx = pair_to_idx[pair_key]
+
+        row_values = {col: str(row.get(col, "") or "") for col in merged_cols}
+        if existing_idx is None:
+            ledger = pd.concat([ledger, pd.DataFrame([row_values], columns=merged_cols)], ignore_index=True)
+            new_idx = int(ledger.index[-1])
+            if alignment_id:
+                id_to_idx[alignment_id] = new_idx
+            pair_to_idx[pair_key] = new_idx
+        else:
+            for col, value in row_values.items():
+                ledger.at[existing_idx, col] = value
+            if alignment_id:
+                id_to_idx[alignment_id] = existing_idx
+            pair_to_idx[pair_key] = existing_idx
+
+    return ledger.reindex(columns=merged_cols, fill_value="")
 
 
 def sqlite_tables(db_path: str | Path) -> list[str]:

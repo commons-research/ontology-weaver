@@ -89,9 +89,9 @@ Keep these in Git:
 
 Each schema should have one TSV that contains:
 
-- fresh `needs_review` suggestions
-- approved/rejected/deprecated review decisions
-- manual rows added during curation
+- approved review decisions
+
+This versioned TSV is the shared review ledger and SSOT for exports.
 
 ## Local generated artefacts
 
@@ -104,10 +104,14 @@ Do not version these generated caches/exports:
 - `registry/downloads/`
 - `registry/imports/*_terms.tsv`
 - `registry/exports/`
+- `registry/work/`
 - `registry/ols_ontologies.tsv`
 - `registry/ols_ontologies_meta.json`
 - `registry/mapping_relations_catalog.json`
 - `registry/schema_docs/`
+
+`registry/work/pair_alignment_candidates_<source>.tsv` is the local working queue.
+Use it for focused regeneration and in-progress curation. Only approved decisions are synced back to the shared ledger.
 
 ## Collaboration workflow (git + PR)
 
@@ -117,15 +121,19 @@ Use shared schema files (no per-curator filenames) and collaborate through branc
 2. In the app sidebar, select:
    - `Source ID` (schema you curate)
    - `Curator` (your name/id)
-3. Curate in the shared file for that schema:
+3. The shared review ledger for that schema is:
    - `registry/pair_alignment_candidates_<source>.tsv`
-4. Commit only that schema TSV plus any intentional manifest edits.
-5. Open a PR with a short summary:
+4. Generate and curate locally in:
+   - `registry/work/pair_alignment_candidates_<source>.tsv`
+5. Commit only the finalized shared ledger plus any intentional manifest edits:
+   - `registry/pair_alignment_candidates_<source>.tsv`
+6. Open a PR with a short summary:
    - schema curated
    - terms reviewed
    - notable manual additions/rejections
-6. Reviewer checks diff + app preview, then merges.
+7. Reviewer checks diff + app preview, then merges.
 
 Notes:
 - Reviewer attribution is stored in TSV `reviewer`/`date_reviewed` fields.
 - SQLite/reconciled exports are local cache files and should not be manually edited or committed.
+- Focused local regeneration is safe because `needs_review` queue rows stay under `registry/work/`.

@@ -5,6 +5,8 @@ This repository uses a one-TSV-per-schema review workflow plus local derived exp
 ## Active files
 - Versioned review file:
   - `registry/pair_alignment_candidates_<source>.tsv`
+- Local queue file:
+  - `registry/work/pair_alignment_candidates_<source>.tsv`
 - Local derived files:
   - `registry/reconciled_mappings.tsv`
   - `registry/reconciled_canonical_groups.tsv`
@@ -32,8 +34,7 @@ This repository uses a one-TSV-per-schema review workflow plus local derived exp
 
 ## Allowed values
 - `alignment_id`:
-  - candidates: `CAND_0001`, `CAND_0002`, ...
-  - curated: `ALIGN_0001`, `ALIGN_0002`, ...
+  - review ledger / local queue rows: `CAND_0001`, `CAND_0002`, ...
 - `relation`: `exact|close|broad|narrow|related`
 - `status`: `needs_review|approved|rejected|deprecated`
 - `canonical_from`: `left|right|manual` (or empty before approval)
@@ -58,6 +59,12 @@ Validate:
 
 ```bash
 scripts/validate_pair_alignments.py registry/pair_alignment_candidates_emi.tsv --kind candidate
+```
+
+Local queue validation:
+
+```bash
+scripts/validate_pair_alignments.py registry/work/pair_alignment_candidates_emi.tsv --kind candidate
 ```
 
 Sync TSV -> SQLite + canonical exports:

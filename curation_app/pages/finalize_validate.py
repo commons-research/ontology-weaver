@@ -445,10 +445,10 @@ def render() -> None:
         st.warning("No source slug available. Configure Download External Sources first.")
         return
 
-    candidates_path = ctx.candidates_tsv
+    candidates_path = ctx.review_tsv
     df = _ensure_columns(read_tsv(candidates_path))
     if df.empty and not candidates_path.is_file():
-        st.warning("No curated candidate file found yet. Please run Generate and Curate first.")
+        st.warning("No reviewed ledger file found yet. Please validate items in Curate candidates first.")
         return
 
     st.caption(f"Dataset: `{to_relpath(candidates_path)}`")

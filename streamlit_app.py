@@ -86,7 +86,8 @@ def main() -> None:
         ctx = source_context(selected_source_id, manifest_df)
         st.sidebar.caption(f"TTL: `{ctx.download_ttl.name}`")
         st.sidebar.caption(f"Terms: `{ctx.terms_tsv.name}`")
-        st.sidebar.caption(f"Candidates: `{ctx.candidates_tsv.name}`")
+        st.sidebar.caption(f"Review ledger: `{ctx.review_tsv.name}`")
+        st.sidebar.caption(f"Local queue: `{ctx.queue_tsv.name}`")
     else:
         st.sidebar.error("No source_id found in registry/external_sources.tsv")
 

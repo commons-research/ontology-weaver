@@ -271,7 +271,7 @@ def render() -> None:
     include_existing_curated = st.checkbox(
         "Include pairs already reviewed",
         value=False,
-        help="If off, approved/rejected/deprecated and manual rows already present in this schema TSV are excluded.",
+        help="If off, approved rows already present in the shared review ledger are excluded.",
     )
 
     st.caption("Curator is fixed to `auto` at generation time.")
@@ -325,9 +325,9 @@ def render() -> None:
         "--left-source",
         left_slug.upper(),
         "--curated-alignments",
-        to_relpath(left_ctx.candidates_tsv),
+        to_relpath(left_ctx.review_tsv),
         "--output",
-        to_relpath(left_ctx.candidates_tsv),
+        to_relpath(left_ctx.queue_tsv),
         "--max-left-terms",
         str(max_left_terms),
         "--curator",
@@ -382,9 +382,10 @@ def render() -> None:
                 st.rerun()
 
     st.subheader("Candidates Preview")
-    candidates_df = read_tsv(left_ctx.candidates_tsv)
-    if candidates_df.empty and not left_ctx.candidates_tsv.is_file():
-        st.info("No candidates file yet. Generate candidates first.")
+    candidates_df = read_tsv(left_ctx.queue_tsv)
+    if candidates_df.empty and not left_ctx.queue_tsv.is_file():
+        st.info("No local queue file yet. Generate candidates first.")
         return
+    st.caption(f"Local queue: `{to_relpath(left_ctx.queue_tsv)}`")
     st.caption(f"Rows: {len(candidates_df)}")
     render_clickable_dataframe(candidates_df.head(200), use_container_width=True, hide_index=True)
