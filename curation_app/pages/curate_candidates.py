@@ -14,6 +14,7 @@ import streamlit as st
 from rdflib import Graph, URIRef
 from rdflib.namespace import OWL, RDF, RDFS, SKOS
 
+from curation_app.config import DEFAULT_OLS_ONTOLOGIES_FILE
 from curation_app.context import active_source_context
 from curation_app.helpers import (
     dataframe_to_tsv_bytes,
@@ -69,6 +70,7 @@ MAPPING_RELATION_PLACEHOLDER = "(select mapping relation)"
 STATUSES = ["needs_review", "approved", "rejected", "deprecated"]
 CANONICAL_FROM = ["", "left", "right", "manual"]
 KIND_MISMATCH_SCORE_FACTOR = 0.75
+OLS_ENTITY_KIND_VALUES = ("class", "property", "individual")
 
 MAPPING_GUIDANCE: dict[str, dict[str, str]] = {
     "owl:equivalentClass": {
@@ -431,6 +433,135 @@ def _bioportal_search_url(query: str) -> str:
     return "https://bioportal.bioontology.org/search?query=" + quote_plus(query or "")
 
 
+def _ols_term_landing_url(ontology: str, iri: str, short_form: str = "") -> str:
+    onto = (ontology or "").strip().lower()
+    term_iri = (iri or "").strip()
+    if not onto or not term_iri:
+        return ""
+    base = (
+        f"https://www.ebi.ac.uk/ols4/ontologies/{quote(onto)}/terms"
+        f"?iri={quote(term_iri, safe='')}"
+    )
+    sf = (short_form or "").strip()
+    if sf:
+        return f"{base}&sf={quote(sf, safe='')}"
+    return base
+
+
+def _ols_catalog() -> list[str]:
+    df = read_tsv(DEFAULT_OLS_ONTOLOGIES_FILE)
+    if df.empty or "ontology" not in df.columns:
+        return ["chebi", "obi", "ms", "chmo", "edam"]
+    options: list[str] = []
+    seen: set[str] = set()
+    for value in df["ontology"].tolist():
+        ontology = str(value or "").strip().lower()
+        if not ontology or ontology in seen:
+            continue
+        seen.add(ontology)
+        options.append(ontology)
+    return options or ["chebi", "obi", "ms", "chmo", "edam"]
+
+
+def _search_ols(
+    query: str,
+    ontologies: list[str],
+    *,
+    left_label: str,
+    left_kind: str,
+    rows: int = 8,
+    timeout: float = 4.0,
+    search_all: bool = False,
+    mother_only: bool = True,
+) -> list[dict[str, str]]:
+    q = query.strip()
+    if not q:
+        return []
+
+    by_key: dict[tuple[str, str], dict[str, str]] = {}
+    query_norm = _normalize_label(q)
+    if search_all:
+        request_specs = [("", max(25, min(200, rows * 10)))]
+    else:
+        if not ontologies:
+            return []
+        request_specs = [(ontology, max(1, rows)) for ontology in ontologies]
+
+    for ontology, row_limit in request_specs:
+        params_map: dict[str, object] = {"q": q, "rows": row_limit}
+        if ontology:
+            params_map["ontology"] = ontology
+        if mother_only:
+            params_map["local"] = "true"
+        params = urlencode(params_map)
+        url = f"https://www.ebi.ac.uk/ols4/api/search?{params}"
+        try:
+            with urllib.request.urlopen(url, timeout=timeout) as response:
+                payload = response.read().decode("utf-8", errors="replace")
+        except Exception:
+            continue
+        try:
+            parsed = json.loads(payload)
+        except Exception:
+            continue
+        docs = parsed.get("response", {}).get("docs", [])
+        if not isinstance(docs, list):
+            continue
+        for doc in docs:
+            if not isinstance(doc, dict):
+                continue
+            iri = str(doc.get("iri", "") or "").strip()
+            label = str(doc.get("label", "") or "").strip()
+            onto = str(doc.get("ontology_prefix", "") or ontology or "unknown").strip().lower()
+            short_form = str(doc.get("short_form", "") or "").strip()
+            entity_kind = (
+                _infer_ols_entity_kind(
+                    doc.get("entity_type"),
+                    doc.get("entityType"),
+                    doc.get("type"),
+                    doc.get("semantic_type"),
+                    doc.get("semanticType"),
+                )
+                or "class"
+            )
+            if not iri:
+                continue
+            score = _manual_match_score(
+                left_label or q,
+                label or iri,
+                left_kind=left_kind,
+                right_kind=entity_kind,
+            )
+            if query_norm and _normalize_label(label) == query_norm:
+                score = 1.0
+            key = (onto, iri)
+            existing = by_key.get(key)
+            row = {
+                "ontology": onto,
+                "iri": iri,
+                "ols_term_page": _ols_term_landing_url(onto, iri, short_form=short_form),
+                "label": label or iri,
+                "short_form": short_form,
+                "entity_kind": entity_kind,
+                "is_defining_ontology": str(
+                    doc.get("is_defining_ontology", doc.get("isDefiningOntology", ""))
+                ).strip(),
+                "score": f"{score:.2f}",
+            }
+            if existing is None or float(row["score"]) > float(existing.get("score", "0") or "0"):
+                by_key[key] = row
+
+    ranked = sorted(
+        by_key.values(),
+        key=lambda row: (
+            -float(row.get("score", "0") or "0"),
+            row.get("ontology", ""),
+            row.get("label", ""),
+        ),
+    )
+    return ranked[:50]
+
+
 def _infer_label_from_iri(iri: str) -> str:
     trimmed = (iri or "").rstrip("/#")
     if "#" in trimmed:
@@ -730,6 +861,36 @@ def _extract_annotation_by_substring(annotations: object, needle: str) -> str:
     return ""
 
 
+def _empty_ols_metadata() -> dict[str, str]:
+    return {
+        "label": "",
+        "definition": "",
+        "comment": "",
+        "example": "",
+        "term_api_url": "",
+        "entity_kind": "",
+    }
+
+
+def _infer_ols_entity_kind(*values: object) -> str:
+    parts: list[str] = []
+    for value in values:
+        if isinstance(value, dict):
+            parts.extend(f"{key} {subvalue}" for key, subvalue in value.items())
+        elif isinstance(value, (list, tuple, set)):
+            parts.extend(str(item or "") for item in value)
+        else:
+            parts.append(str(value or ""))
+    text = " ".join(parts).lower()
+    if "property" in text:
+        return "property"
+    if "individual" in text:
+        return "individual"
+    if "class" in text or "concept" in text:
+        return "class"
+    return ""
+
+
 def _mapping_guidance_text(rel: str, fallback_definition: str) -> str:
     entry = MAPPING_GUIDANCE.get(rel, {})
     when = str(entry.get("when", "")).strip()
@@ -762,7 +923,7 @@ def _lookup_ols_hit_by_iri(
     """Best-effort OLS lookup by IRI/short form; returns (ontology_prefix, metadata_hint)."""
     clean_iri = iri.strip()
     if not clean_iri:
-        return "", {"label": "", "definition": "", "comment": "", "example": "", "term_api_url": ""}
+        return "", _empty_ols_metadata()
 
     short_form = _infer_label_from_iri(clean_iri)
     search_params = [
@@ -799,6 +960,13 @@ def _lookup_ols_hit_by_iri(
             "comment": comment,
             "example": example,
             "term_api_url": "",
+            "entity_kind": _infer_ols_entity_kind(
+                doc.get("entity_type"),
+                doc.get("entityType"),
+                doc.get("type"),
+                doc.get("semantic_type"),
+                doc.get("semanticType"),
+            ),
         }
 
     def normalize_iri(text: str) -> str:
@@ -847,12 +1015,12 @@ def _lookup_ols_hit_by_iri(
         onto_prefix = str(best_doc.get("ontology_prefix", "") or "").strip().lower()
         if onto_prefix:
             return onto_prefix, doc_to_hint(best_doc)
-    return "", {"label": "", "definition": "", "comment": "", "example": "", "term_api_url": ""}
+    return "", _empty_ols_metadata()
 
 
 def _fetch_ols_metadata_for_iri(iri: str, ontology: str, timeout: float = 4.0) -> dict[str, str]:
     if not iri.strip() or not ontology.strip():
-        return {"label": "", "definition": "", "comment": "", "example": "", "term_api_url": ""}
+        return _empty_ols_metadata()
     iri_encoded = quote(iri.strip(), safe="")
     iri_double_encoded = quote(iri_encoded, safe="")
     ontology_encoded = quote(ontology.strip().lower(), safe="")
@@ -935,7 +1103,7 @@ def _fetch_ols_metadata_for_iri(iri: str, ontology: str, timeout: float = 4.0) -
             break
 
     if payload is None:
-        return {"label": "", "definition": "", "comment": "", "example": "", "term_api_url": ""}
+        return _empty_ols_metadata()
 
     annotations = payload.get("annotation", payload.get("annotations", {}))
     label = _first_text(payload.get("label"))
@@ -978,6 +1146,13 @@ def _fetch_ols_metadata_for_iri(iri: str, ontology: str, timeout: float = 4.0) -
         "comment": comment,
         "example": example,
         "term_api_url": used_url,
+        "entity_kind": _infer_ols_entity_kind(
+            payload.get("entity_type"),
+            payload.get("entityType"),
+            payload.get("type"),
+            payload.get("semantic_type"),
+            payload.get("semanticType"),
+        ),
     }
 
 
@@ -1102,7 +1277,7 @@ def _fetch_ols_metadata_for_entity(
             break
 
     if payload is None:
-        return {"label": "", "definition": "", "comment": "", "example": "", "term_api_url": ""}
+        return _empty_ols_metadata()
 
     annotations = payload.get("annotation", payload.get("annotations", {}))
     label = _first_text(payload.get("label"))
@@ -1145,7 +1320,50 @@ def _fetch_ols_metadata_for_entity(
         "comment": comment,
         "example": example,
         "term_api_url": used_url,
+        "entity_kind": _infer_ols_entity_kind(
+            payload.get("entity_type"),
+            payload.get("entityType"),
+            payload.get("type"),
+            payload.get("semantic_type"),
+            payload.get("semanticType"),
+        ),
     }
+
+
+def _resolve_ols_entity_metadata(
+    *,
+    iri: str,
+    ontology_candidates: list[str],
+    search_hint: dict[str, str] | None = None,
+) -> tuple[dict[str, str], str]:
+    hint = dict(search_hint or {})
+    search_entity_kind = _normalize_kind(hint.get("entity_kind", ""))
+    kind_candidates: list[str] = []
+    for kind in (search_entity_kind,) + OLS_ENTITY_KIND_VALUES:
+        normalized = _normalize_kind(kind)
+        if normalized and normalized not in kind_candidates:
+            kind_candidates.append(normalized)
+
+    metadata = _empty_ols_metadata()
+    metadata_ontology = ontology_candidates[0] if ontology_candidates else ""
+    for candidate_ontology in ontology_candidates:
+        for candidate_kind in kind_candidates:
+            metadata = _fetch_ols_metadata_for_entity(
+                iri=iri,
+                ontology=candidate_ontology,
+                entity_kind=candidate_kind,
+            )
+            metadata_ontology = candidate_ontology
+            for key in ("label", "definition", "comment", "example", "term_api_url", "entity_kind"):
+                if not metadata.get(key, "").strip():
+                    metadata[key] = hint.get(key, "")
+            if metadata.get("term_api_url", "").strip() and metadata.get("label", "").strip():
+                return metadata, metadata_ontology
+
+    for key in ("label", "definition", "comment", "example", "term_api_url", "entity_kind"):
+        if not metadata.get(key, "").strip():
+            metadata[key] = hint.get(key, "")
+    return metadata, metadata_ontology
 
 
 def _render_term_card(
@@ -1678,136 +1896,289 @@ def render() -> None:
                             st.success("Deleted candidate match.")
                             st.rerun()
 
-            st.markdown("**Expand search manually**")
-            ols_link = _ols_search_url(left_label)
+            st.markdown("**Add manual candidate**")
+            manual_search_query_key = f"manual_candidate_search_query_{left_term_key}"
+            manual_search_query_used_key = f"manual_candidate_search_query_used_{left_term_key}"
+            manual_search_results_key = f"manual_candidate_search_results_{left_term_key}"
+            manual_search_ontologies_key = f"manual_candidate_search_ontologies_{left_term_key}"
+            manual_search_all_key = f"manual_candidate_search_all_{left_term_key}"
+            manual_mother_only_key = f"manual_candidate_mother_only_{left_term_key}"
+            manual_rows_key = f"manual_candidate_rows_{left_term_key}"
+            manual_selected_ontologies_key = f"manual_candidate_selected_ontologies_{left_term_key}"
+            manual_url_key = f"manual_candidate_url_{left_term_key}"
+            manual_ontology_key = f"manual_candidate_ontology_{left_term_key}"
+            if manual_search_query_key not in st.session_state:
+                st.session_state[manual_search_query_key] = left_label
+            ontology_options = _ols_catalog()
+            default_ontos = [x for x in ["chebi", "obi", "ms", "chmo", "edam"] if x in ontology_options] or ontology_options[:5]
+            if manual_search_all_key not in st.session_state:
+                st.session_state[manual_search_all_key] = False
+            if manual_mother_only_key not in st.session_state:
+                st.session_state[manual_mother_only_key] = True
+            if manual_rows_key not in st.session_state:
+                st.session_state[manual_rows_key] = 8
+            if manual_selected_ontologies_key not in st.session_state:
+                st.session_state[manual_selected_ontologies_key] = default_ontos
+            if manual_url_key not in st.session_state:
+                st.session_state[manual_url_key] = ""
+            if manual_ontology_key not in st.session_state:
+                st.session_state[manual_ontology_key] = ""
+
+            def _add_manual_candidate_row(iri_value: str, ontology_id_value: str, *, source: str) -> None:
+                iri_clean = iri_value.strip()
+                ontology_id_clean = ontology_id_value.strip().lower()
+                if not iri_clean:
+                    st.error("Manual candidate URL/IRI is required.")
+                    return
+                if not _is_http(iri_clean):
+                    st.error("Manual candidate must be a valid IRI starting with http:// or https://.")
+                    return
+
+                existing_mask = (
+                    (df["left_source"] == left_source)
+                    & (df["left_term_iri"] == left_iri)
+                    & (df["right_term_iri"] == iri_clean)
+                )
+                if bool(existing_mask.any()):
+                    existing_alignment_id = str(df.loc[existing_mask].iloc[0]["alignment_id"])
+                    st.warning("This candidate URL already exists for the selected left term.")
+                    st.session_state[STATE_SELECTED_ALIGNMENT] = existing_alignment_id
+                    kept_left_terms.discard(left_term_key)
+                    st.session_state[STATE_KEPT_LEFT_TERMS] = sorted(kept_left_terms)
+                    st.rerun()
+
+                resolved_ontology, search_hint = _lookup_ols_hit_by_iri(iri_clean)
+                ontology_candidates: list[str] = []
+                for candidate_ontology in (ontology_id_clean, resolved_ontology):
+                    clean_ontology = str(candidate_ontology or "").strip().lower()
+                    if clean_ontology and clean_ontology not in ontology_candidates:
+                        ontology_candidates.append(clean_ontology)
+                if not ontology_candidates:
+                    st.error("Unable to resolve ontology for this IRI. Provide a valid ontology ID.")
+                    return
+
+                metadata, metadata_ontology = _resolve_ols_entity_metadata(
+                    iri=iri_clean,
+                    ontology_candidates=ontology_candidates,
+                    search_hint=search_hint,
+                )
+
+                if not metadata.get("term_api_url", "").strip() or not metadata.get("label", "").strip():
+                    st.error(
+                        "No OLS match found for this ontology ID + IRI. "
+                        "Card was not created."
+                    )
+                    return
+
+                resolved_kind = _normalize_kind(metadata.get("entity_kind", ""))
+                right_label_value = metadata["label"].strip()
+                match_score_value = _manual_match_score(
+                    left_label,
+                    right_label_value,
+                    left_kind=str(left_row_series.get("left_term_kind", "") or ""),
+                    right_kind=resolved_kind,
+                )
+
+                new_row = {col: "" for col in df.columns}
+                new_row["alignment_id"] = _next_alignment_id(df)
+                new_row["left_source"] = left_source
+                new_row["left_term_iri"] = left_iri
+                new_row["left_label"] = left_label
+                new_row["left_definition"] = str(left_row_series.get("left_definition", "") or "")
+                new_row["left_comment"] = str(left_row_series.get("left_comment", "") or "")
+                new_row["left_example"] = str(left_row_series.get("left_example", "") or "")
+                new_row["left_term_kind"] = str(left_row_series.get("left_term_kind", "") or "")
+                new_row["right_source"] = metadata_ontology.upper()
+                new_row["right_term_iri"] = iri_clean
+                new_row["right_label"] = right_label_value
+                new_row["right_definition"] = metadata["definition"]
+                new_row["right_comment"] = metadata["comment"]
+                new_row["right_example"] = metadata["example"]
+                new_row["right_term_kind"] = resolved_kind
+                new_row["ols_term_api_url"] = metadata["term_api_url"] or iri_clean
+                new_row["match_method"] = "manual_url_lexical"
+                new_row["match_score"] = f"{match_score_value:.2f}"
+                new_row["relation"] = _relation_for_score(match_score_value)
+                new_row["suggestion_source"] = "manual_search"
+                new_row["canonical_from"] = ""
+                new_row["canonical_term_iri"] = ""
+                new_row["canonical_term_label"] = ""
+                new_row["canonical_term_source"] = ""
+                new_row["canonical_term_kind"] = ""
+                new_row["ols_search_url"] = _ols_search_url(left_label)
+                new_row["bioportal_search_url"] = _bioportal_search_url(left_label)
+                new_row["status"] = "needs_review"
+                new_row["curator"] = "auto"
+                new_row["curator_name"] = ""
+                new_row["reviewer"] = active_curator
+                new_row["reviewer_name"] = active_curator_name
+                new_row["date_added"] = utc_now_timestamp()
+                new_row["date_reviewed"] = ""
+                if source == "search":
+                    new_row["logs"] = (
+                        f"Manual {resolved_kind or 'term'} candidate added from OLS search result."
+                    )
+                else:
+                    new_row["logs"] = (
+                        f"Manual {resolved_kind or 'term'} candidate added by URL with ontology id "
+                        f"'{ontology_id_clean}'."
+                    )
+                new_row["curation_comment"] = ""
+                if "normalized_left_label" in df.columns:
+                    new_row["normalized_left_label"] = str(left_label).strip().lower()
+                if "normalized_right_label" in df.columns:
+                    new_row["normalized_right_label"] = str(right_label_value).strip().lower()
+
+                st.session_state[STATE_DF] = pd.concat(
+                    [st.session_state[STATE_DF], pd.DataFrame([new_row], columns=df.columns)],
+                    ignore_index=True,
+                )
+                st.session_state[STATE_DIRTY] = True
+                st.session_state[STATE_SELECTED_ALIGNMENT] = str(new_row["alignment_id"])
+                kept_left_terms.discard(left_term_key)
+                st.session_state[STATE_KEPT_LEFT_TERMS] = sorted(kept_left_terms)
+                st.success("Manual candidate added.")
+                st.rerun()
+
+            manual_search_query = st.text_input(
+                "Keyword search",
+                key=manual_search_query_key,
+                help="Search OLS candidates by keyword (usually the source term label).",
+            )
+            ols_link = _ols_search_url(manual_search_query or left_label)
             st.markdown(f"[Open OLS search for this term]({ols_link})")
 
-            manual_url = st.text_input(
-                "Manual candidate term IRI",
-                value="",
-                key=f"manual_candidate_url_{left_term_key}",
-                help="Paste a full term IRI (must start with http:// or https://).",
-            )
-            manual_ontology_id = st.text_input(
-                "Ontology ID (required)",
-                value="",
-                key=f"manual_candidate_ontology_{left_term_key}",
-                help="OLS ontology id (for example: chebi, obi, mesh, biolink, uniprotrdfs).",
-            )
-            manual_entity_kind = st.selectbox(
-                "Entity type (required)",
-                options=["Class", "Property", "Individual"],
-                index=0,
-                key=f"manual_candidate_entity_kind_{left_term_key}",
-                help="Chooses which OLS controller endpoint is queried first.",
-            )
-            if st.button("Add manual candidate", key=f"add_manual_candidate_{left_term_key}"):
+            add_manual_candidate_clicked = False
+            with st.expander("Advanced options", expanded=False):
+                st.checkbox(
+                    "Search across ALL OLS ontologies (slower)",
+                    key=manual_search_all_key,
+                    help="When enabled, ontology selection is ignored and OLS global search is used.",
+                )
+                st.checkbox(
+                    "Only terms defined in source ontology (exclude imports)",
+                    key=manual_mother_only_key,
+                    help=(
+                        "Keeps only terms where OLS marks the hit as defined by the ontology "
+                        "(not imported from another ontology)."
+                    ),
+                )
+                st.multiselect(
+                    "Ontologies",
+                    options=ontology_options,
+                    key=manual_selected_ontologies_key,
+                    help="Choose OLS ontologies to search for matching terms.",
+                    disabled=bool(st.session_state.get(manual_search_all_key, False)),
+                )
+                st.number_input(
+                    "Rows per ontology",
+                    min_value=1,
+                    max_value=30,
+                    step=1,
+                    key=manual_rows_key,
+                )
+                st.markdown("**Direct IRI entry**")
+                manual_url = st.text_input(
+                    "Manual candidate term IRI",
+                    value="",
+                    key=manual_url_key,
+                    help="Paste a full term IRI (must start with http:// or https://).",
+                )
+                manual_ontology_id = st.text_input(
+                    "Ontology ID (required)",
+                    value="",
+                    key=manual_ontology_key,
+                    help="OLS ontology id (for example: chebi, obi, mesh, biolink, uniprotrdfs).",
+                )
+                add_manual_candidate_clicked = st.button(
+                    "Add manual candidate",
+                    key=f"add_manual_candidate_{left_term_key}",
+                )
+
+            search_col, clear_col = st.columns([1, 1])
+            if search_col.button("Search ontology terms", key=f"search_manual_candidates_{left_term_key}"):
+                results = _search_ols(
+                    manual_search_query,
+                    list(st.session_state.get(manual_selected_ontologies_key, [])),
+                    left_label=left_label,
+                    left_kind=str(left_row_series.get("left_term_kind", "") or ""),
+                    rows=int(st.session_state.get(manual_rows_key, 8) or 8),
+                    search_all=bool(st.session_state.get(manual_search_all_key, False)),
+                    mother_only=bool(st.session_state.get(manual_mother_only_key, True)),
+                )
+                st.session_state[manual_search_results_key] = results
+                st.session_state[manual_search_query_used_key] = manual_search_query
+                st.session_state[manual_search_ontologies_key] = (
+                    ["ALL"]
+                    if st.session_state.get(manual_search_all_key, False)
+                    else list(st.session_state.get(manual_selected_ontologies_key, []))
+                )
+                if not results:
+                    st.warning("No OLS result found for this query/ontology selection.")
+                else:
+                    st.success(f"Loaded {len(results)} candidate mapping term(s).")
+            if clear_col.button("Clear search results", key=f"clear_manual_candidates_{left_term_key}"):
+                st.session_state[manual_search_results_key] = []
+                st.session_state[manual_search_query_used_key] = ""
+                st.session_state[manual_search_ontologies_key] = []
+                st.rerun()
+
+            manual_results = st.session_state.get(manual_search_results_key, [])
+            if manual_results:
+                st.caption(
+                    "Search context: "
+                    f"`{st.session_state.get(manual_search_query_used_key, '')}` in "
+                    f"{', '.join(st.session_state.get(manual_search_ontologies_key, []))}"
+                )
+                header_cols = st.columns([1.3, 1.2, 2.2, 3.2, 1.3, 1.1])
+                header_cols[0].markdown("**Action**")
+                header_cols[1].markdown("**Score**")
+                header_cols[2].markdown("**Term**")
+                header_cols[3].markdown("**Label**")
+                header_cols[4].markdown("**Ontology**")
+                header_cols[5].markdown("**Kind**")
+                for idx, result_row in enumerate(manual_results[:50]):
+                    iri = str(result_row.get("iri", "")).strip()
+                    ontology = str(result_row.get("ontology", "")).strip().lower()
+                    label = str(result_row.get("label", "")).strip() or iri
+                    entity_kind = str(result_row.get("entity_kind", "")).strip().lower() or "class"
+                    short_form = str(result_row.get("short_form", "")).strip()
+                    term_page = str(result_row.get("ols_term_page", "")).strip()
+                    score_value = float(pd.to_numeric(result_row.get("score", 0.0), errors="coerce") or 0.0)
+                    row_cols = st.columns([1.3, 1.2, 2.2, 3.2, 1.3, 1.1])
+                    with row_cols[0]:
+                        if st.button(
+                            "Use",
+                            key=f"use_manual_candidate_hit_{left_term_key}_{idx}_{short_form or iri}",
+                            disabled=not bool(iri),
+                            use_container_width=True,
+                        ):
+                            _add_manual_candidate_row(
+                                iri,
+                                ontology if ontology != "unknown" else "",
+                                source="search",
+                            )
+                    with row_cols[1]:
+                        st.progress(max(0.0, min(1.0, score_value)))
+                    with row_cols[2]:
+                        if term_page:
+                            st.markdown(f"[{short_form or iri}]({term_page})")
+                        else:
+                            st.markdown(short_form or iri)
+                    with row_cols[3]:
+                        st.markdown(label)
+                    with row_cols[4]:
+                        st.markdown(ontology.upper())
+                    with row_cols[5]:
+                        st.markdown(entity_kind)
+
+            if add_manual_candidate_clicked:
                 iri = manual_url.strip()
                 ontology_id = manual_ontology_id.strip().lower()
-                entity_kind = manual_entity_kind.strip().lower()
-                if not iri:
-                    st.error("Manual candidate URL/IRI is required.")
-                elif not _is_http(iri):
-                    st.error("Manual candidate must be a valid IRI starting with http:// or https://.")
-                elif not ontology_id:
+                if not ontology_id:
                     st.error("Ontology ID is required.")
-                elif entity_kind not in {"class", "property", "individual"}:
-                    st.error("Entity type is required.")
                 else:
-                    existing_mask = (
-                        (df["left_source"] == left_source)
-                        & (df["left_term_iri"] == left_iri)
-                        & (df["right_term_iri"] == iri)
-                    )
-                    if bool(existing_mask.any()):
-                        st.warning("This candidate URL already exists for the selected left term.")
-                    else:
-                        _, search_hint = _lookup_ols_hit_by_iri(iri)
-                        ontology_for_metadata = ontology_id
-                        right_source_value = ontology_id.upper()
-                        metadata = (
-                            _fetch_ols_metadata_for_entity(
-                                iri=iri,
-                                ontology=ontology_for_metadata,
-                                entity_kind=entity_kind,
-                            )
-                            if ontology_for_metadata
-                            else {"label": "", "definition": "", "comment": "", "example": "", "term_api_url": ""}
-                        )
-                        # If direct term lookup is sparse, keep useful fields from OLS search hit.
-                        for key in ("label", "definition", "comment", "example", "term_api_url"):
-                            if not metadata.get(key, "").strip():
-                                metadata[key] = search_hint.get(key, "")
-
-                        if not metadata.get("term_api_url", "").strip() or not metadata.get("label", "").strip():
-                            st.error(
-                                "No OLS match found for this ontology ID + IRI. "
-                                "Card was not created."
-                            )
-                            return
-
-                        right_label_value = metadata["label"].strip()
-                        match_score_value = _manual_match_score(
-                            left_label,
-                            right_label_value,
-                            left_kind=str(left_row_series.get("left_term_kind", "") or ""),
-                            right_kind=entity_kind,
-                        )
-
-                        new_row = {col: "" for col in df.columns}
-                        new_row["alignment_id"] = _next_alignment_id(df)
-                        new_row["left_source"] = left_source
-                        new_row["left_term_iri"] = left_iri
-                        new_row["left_label"] = left_label
-                        new_row["left_definition"] = str(left_row_series.get("left_definition", "") or "")
-                        new_row["left_comment"] = str(left_row_series.get("left_comment", "") or "")
-                        new_row["left_example"] = str(left_row_series.get("left_example", "") or "")
-                        new_row["left_term_kind"] = str(left_row_series.get("left_term_kind", "") or "")
-                        new_row["right_source"] = right_source_value
-                        new_row["right_term_iri"] = iri
-                        new_row["right_label"] = right_label_value
-                        new_row["right_definition"] = metadata["definition"]
-                        new_row["right_comment"] = metadata["comment"]
-                        new_row["right_example"] = metadata["example"]
-                        new_row["right_term_kind"] = entity_kind
-                        new_row["ols_term_api_url"] = metadata["term_api_url"] or iri
-                        new_row["match_method"] = "manual_url_lexical"
-                        new_row["match_score"] = f"{match_score_value:.2f}"
-                        new_row["relation"] = _relation_for_score(match_score_value)
-                        new_row["suggestion_source"] = "manual_search"
-                        new_row["canonical_from"] = ""
-                        new_row["canonical_term_iri"] = ""
-                        new_row["canonical_term_label"] = ""
-                        new_row["canonical_term_source"] = ""
-                        new_row["canonical_term_kind"] = ""
-                        new_row["ols_search_url"] = _ols_search_url(left_label)
-                        new_row["bioportal_search_url"] = _bioportal_search_url(left_label)
-                        new_row["status"] = "needs_review"
-                        new_row["curator"] = "auto"
-                        new_row["curator_name"] = ""
-                        new_row["reviewer"] = active_curator
-                        new_row["reviewer_name"] = active_curator_name
-                        new_row["date_added"] = utc_now_timestamp()
-                        new_row["date_reviewed"] = ""
-                        new_row["logs"] = (
-                            f"Manual {entity_kind} candidate added by URL with ontology id '{ontology_id}'."
-                        )
-                        new_row["curation_comment"] = ""
-                        if "normalized_left_label" in df.columns:
-                            new_row["normalized_left_label"] = str(left_label).strip().lower()
-                        if "normalized_right_label" in df.columns:
-                            new_row["normalized_right_label"] = str(right_label_value).strip().lower()
-
-                        st.session_state[STATE_DF] = pd.concat(
-                            [st.session_state[STATE_DF], pd.DataFrame([new_row], columns=df.columns)],
-                            ignore_index=True,
-                        )
-                        st.session_state[STATE_DIRTY] = True
-                        st.session_state[STATE_SELECTED_ALIGNMENT] = str(new_row["alignment_id"])
-                        kept_left_terms.discard(left_term_key)
-                        st.session_state[STATE_KEPT_LEFT_TERMS] = sorted(kept_left_terms)
-                        st.success("Manual candidate added.")
-                        st.rerun()
+                    _add_manual_candidate_row(iri, ontology_id, source="manual")
         decision_made = left_is_kept or (
             row is not None and row_idx is not None and mapping_relation_selected
         )
