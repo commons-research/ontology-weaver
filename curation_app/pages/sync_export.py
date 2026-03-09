@@ -5,24 +5,32 @@ from __future__ import annotations
 import streamlit as st
 
 from curation_app.config import (
-    DEFAULT_CANDIDATES_FILE,
-    DEFAULT_CURATED_FILE,
     DEFAULT_GROUPS_FILE,
     DEFAULT_RECONCILED_FILE,
     DEFAULT_SQLITE_DB,
 )
+from curation_app.context import active_source_context
 from curation_app.helpers import render_file_download, render_table_preview, run_python_script, show_command_result, to_relpath
 
 
 def render() -> None:
     st.title("Step 6: Sync SQLite + Export Reconciled Files")
+    ctx = active_source_context()
+    default_candidates = ctx.candidates_tsv if ctx else None
 
     db_path = st.text_input("SQLite DB", value=to_relpath(DEFAULT_SQLITE_DB))
-    candidates_file = st.text_input("Candidates TSV", value=to_relpath(DEFAULT_CANDIDATES_FILE))
-    curated_file = st.text_input("Curated TSV", value=to_relpath(DEFAULT_CURATED_FILE))
+    candidates_file = st.text_input(
+        "Schema TSV",
+        value=to_relpath(default_candidates) if default_candidates else "registry/pair_alignment_candidates.tsv",
+    )
+    curated_file = st.text_input(
+        "Approved rows source TSV",
+        value=to_relpath(default_candidates) if default_candidates else "registry/pair_alignment_candidates.tsv",
+    )
     status_filter = st.text_input("Status to export", value="approved")
     reconciled_output = st.text_input("Reconciled mappings TSV", value=to_relpath(DEFAULT_RECONCILED_FILE))
     grouped_output = st.text_input("Canonical groups TSV", value=to_relpath(DEFAULT_GROUPS_FILE))
+    st.caption("Recommended setup: point both TSV fields to the same per-schema candidate file.")
 
     if st.button("Run sync", type="primary"):
         args = [

@@ -19,8 +19,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--alignments",
         type=Path,
-        default=Path("registry/pair_alignments.tsv"),
-        help="Path to curated pair alignments TSV",
+        default=Path("registry/pair_alignment_candidates.tsv"),
+        help="Path to reviewed candidate TSV (approved rows are exported)",
     )
     parser.add_argument(
         "--output",

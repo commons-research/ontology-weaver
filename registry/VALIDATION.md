@@ -1,13 +1,14 @@
 # Validation
 
-This repository now uses only the pairwise + SQLite workflow.
+This repository uses a one-TSV-per-schema review workflow plus local derived exports.
 
 ## Active files
-- `registry/pair_alignment_candidates.tsv`
-- `registry/pair_alignments.tsv`
-- `registry/reconciled_mappings.tsv`
-- `registry/reconciled_canonical_groups.tsv`
-- `registry/alignment_curation.sqlite`
+- Versioned review file:
+  - `registry/pair_alignment_candidates_<source>.tsv`
+- Local derived files:
+  - `registry/reconciled_mappings.tsv`
+  - `registry/reconciled_canonical_groups.tsv`
+  - `registry/alignment_curation.sqlite`
 
 ## Required columns (`pair_*` TSV)
 - `alignment_id`
@@ -56,18 +57,14 @@ This repository now uses only the pairwise + SQLite workflow.
 Validate:
 
 ```bash
-scripts/validate_pair_alignments.py registry/pair_alignment_candidates.tsv --kind candidate
-scripts/validate_pair_alignments.py registry/pair_alignments.tsv --kind curated
-```
-
-Finalize approved candidate rows:
-
-```bash
-scripts/finalize_pair_alignment_candidates.py --statuses approved
+scripts/validate_pair_alignments.py registry/pair_alignment_candidates_emi.tsv --kind candidate
 ```
 
 Sync TSV -> SQLite + canonical exports:
 
 ```bash
-scripts/sync_alignment_sqlite.py --db registry/alignment_curation.sqlite
+scripts/sync_alignment_sqlite.py \
+  --db registry/alignment_curation.sqlite \
+  --pair-candidates registry/pair_alignment_candidates_emi.tsv \
+  --pair-alignments registry/pair_alignment_candidates_emi.tsv
 ```

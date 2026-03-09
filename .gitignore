@@ -1,3 +1,19 @@
 .venv/
 __pycache__/
 *.pyc
+.DS_Store
+
+# Local cache / generated curation artefacts
+registry/.DS_Store
+registry/alignment_curation.sqlite
+registry/downloads/
+registry/downloads_meta.json
+registry/exports/
+registry/imports/*_terms.tsv
+registry/mapping_relations_catalog.json
+registry/ols_ontologies.tsv
+registry/ols_ontologies_meta.json
+registry/pair_alignments.tsv
+registry/reconciled_mappings.tsv
+registry/reconciled_canonical_groups.tsv
+registry/schema_docs/

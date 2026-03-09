@@ -8,7 +8,7 @@ Supported modes:
    Compare local terms to top OLS API suggestions.
 
 Output rows are written with ephemeral IDs (`CAND_XXXX`) and are intended for
-manual curation before promotion into curated alignments (`ALIGN_XXXX`).
+manual curation inside one per-schema TSV file.
 """
 
 from __future__ import annotations
@@ -30,6 +30,7 @@ from typing import Callable, Iterable
 OLS_API_SEARCH_URL = "https://www.ebi.ac.uk/ols4/api/search"
 DEFAULT_ONTOLOGIES = ["chebi", "obi", "ms", "chmo", "edam"]
 KIND_MISMATCH_SCORE_FACTOR = 0.75
+FINAL_STATUSES = {"approved", "rejected", "deprecated"}
 
 
 @dataclass(frozen=True)
@@ -143,8 +144,11 @@ def parse_args() -> Config:
     parser.add_argument(
         "--curated-alignments",
         type=Path,
-        default=Path("registry/pair_alignments.tsv"),
-        help="Path to curated pair alignments TSV for duplicate exclusion",
+        default=None,
+        help=(
+            "Optional TSV used for duplicate exclusion. "
+            "If omitted, reviewed/manual rows already present in --output are reused."
+        ),
     )
     parser.add_argument(
         "--output",
@@ -782,8 +786,33 @@ def pair_key(
     return tuple(sorted((a, b)))
 
 
-def load_curated_pair_keys(path: Path) -> set[tuple[tuple[str, str], tuple[str, str]]]:
-    """Load existing curated pair keys to prevent duplicate suggestions."""
+def _row_status(row: dict[str, str]) -> str:
+    return (row.get("status", "") or "").strip().lower()
+
+
+def _row_suggestion_source(row: dict[str, str]) -> str:
+    return (row.get("suggestion_source", "") or "").strip().lower()
+
+
+def should_preserve_existing_row(row: dict[str, str]) -> bool:
+    """Keep reviewed rows and manual additions when regenerating candidates."""
+    status = _row_status(row)
+    suggestion_source = _row_suggestion_source(row)
+    return status in FINAL_STATUSES or suggestion_source.startswith("manual_")
+
+
+def load_existing_rows(path: Path) -> tuple[list[str], list[dict[str, str]]]:
+    """Load an existing candidate TSV if present."""
+    if not path.is_file():
+        return [], []
+
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        return reader.fieldnames or [], list(reader)
+
+
+def load_preserved_pair_keys(path: Path) -> set[tuple[tuple[str, str], tuple[str, str]]]:
+    """Load pair keys that should survive regeneration and block duplicate suggestions."""
     if not path.is_file():
         return set()
 
@@ -791,6 +820,8 @@ def load_curated_pair_keys(path: Path) -> set[tuple[tuple[str, str], tuple[str, 
     with path.open("r", encoding="utf-8", newline="") as handle:
         reader = csv.DictReader(handle, delimiter="\t")
         for row in reader:
+            if not should_preserve_existing_row(row):
+                continue
             left_source = (row.get("left_source", "") or "").strip()
             left_iri = (row.get("left_term_iri", "") or "").strip()
             right_source = (row.get("right_source", "") or "").strip()
@@ -823,16 +854,39 @@ def filter_existing_curated_pairs(
     return kept, excluded
 
 
+def next_candidate_id(rows: Iterable[dict[str, str]]) -> int:
+    """Return the next numeric candidate id suffix."""
+    max_num = 0
+    for row in rows:
+        raw = (row.get("alignment_id", "") or "").strip()
+        if raw.startswith("CAND_"):
+            suffix = raw[5:]
+            if suffix.isdigit():
+                max_num = max(max_num, int(suffix))
+    return max_num + 1
+
+
+def merge_headers(primary: list[str], secondary: list[str]) -> list[str]:
+    """Keep the primary header order and append any extra existing columns."""
+    merged = list(primary)
+    for col in secondary:
+        if col not in merged:
+            merged.append(col)
+    return merged
+
+
 def write_candidate_rows(
     output: Path,
     suggestions: list[PairSuggestion],
     left_source: str,
     fallback_right_source: str,
     curator: str,
+    preserved_rows: list[dict[str, str]] | None = None,
+    existing_header: list[str] | None = None,
 ) -> None:
-    """Write pairwise suggestions to candidate TSV output."""
+    """Write pairwise suggestions while preserving reviewed/manual existing rows."""
     output.parent.mkdir(parents=True, exist_ok=True)
-    headers = [
+    default_headers = [
         "alignment_id",
         "left_source",
         "left_term_kind",
@@ -868,19 +922,25 @@ def write_candidate_rows(
         "date_reviewed",
         "notes",
     ]
+    headers = merge_headers(default_headers, existing_header or [])
 
     now_ts = utc_now_timestamp()
     left_source_norm = left_source.strip().upper()
     fallback_right_source_norm = fallback_right_source.strip().upper()
+    carried_rows = list(preserved_rows or [])
+    next_id = next_candidate_id(carried_rows)
     with output.open("w", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(
             handle,
             fieldnames=headers,
             delimiter="\t",
             lineterminator="\n",
+            extrasaction="ignore",
         )
         writer.writeheader()
-        for idx, item in enumerate(suggestions, start=1):
+        for row in carried_rows:
+            writer.writerow(row)
+        for item in suggestions:
             current_right_source = (item.right_source or fallback_right_source).strip().upper()
             canonical_from = "right" if item.suggestion_source == "ols_api" else ""
             canonical_term_iri = item.right_term_iri if canonical_from == "right" else ""
@@ -888,7 +948,7 @@ def write_candidate_rows(
             canonical_term_source = current_right_source if canonical_from == "right" else ""
             writer.writerow(
                 {
-                    "alignment_id": f"CAND_{idx:04d}",
+                    "alignment_id": f"CAND_{next_id:04d}",
                     "left_source": left_source_norm,
                     "left_term_kind": item.left.term_kind,
                     "left_term_iri": item.left.iri,
@@ -922,8 +982,11 @@ def write_candidate_rows(
                     "date_added": now_ts,
                     "date_reviewed": "",
                     "notes": item.notes,
+                    "logs": item.notes,
+                    "curation_comment": "",
                 }
             )
+            next_id += 1
 
 
 def main() -> int:
@@ -991,9 +1054,13 @@ def main() -> int:
         ]
         resolved_right_source = config.right_source
 
+    preserved_header, existing_output_rows = load_existing_rows(config.output)
+    preserved_rows = [row for row in existing_output_rows if should_preserve_existing_row(row)]
+
     excluded_existing = 0
     if not config.include_existing_curated:
-        curated_keys = load_curated_pair_keys(config.curated_alignments)
+        duplicate_source = config.curated_alignments or config.output
+        curated_keys = load_preserved_pair_keys(duplicate_source)
         suggestions, excluded_existing = filter_existing_curated_pairs(
             suggestions=suggestions,
             left_source=config.left_source,
@@ -1007,12 +1074,18 @@ def main() -> int:
         left_source=config.left_source,
         fallback_right_source=resolved_right_source,
         curator=config.curator,
+        preserved_rows=preserved_rows,
+        existing_header=preserved_header,
     )
 
-    print(f"Wrote {len(suggestions)} candidate pair row(s) to {config.output}")
+    print(
+        f"Wrote {len(suggestions)} fresh candidate pair row(s) to {config.output} "
+        f"and preserved {len(preserved_rows)} reviewed/manual row(s)"
+    )
     if not config.include_existing_curated:
         print(
-            f"Excluded {excluded_existing} pair(s) already present in {config.curated_alignments}"
+            f"Excluded {excluded_existing} pair(s) already present in "
+            f"{config.curated_alignments or config.output}"
         )
     return 0
 

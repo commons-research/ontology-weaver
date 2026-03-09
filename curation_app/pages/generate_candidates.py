@@ -8,7 +8,7 @@ import sys
 
 import streamlit as st
 
-from curation_app.config import DEFAULT_CURATED_FILE, DEFAULT_OLS_ONTOLOGIES_FILE, ROOT_DIR
+from curation_app.config import DEFAULT_OLS_ONTOLOGIES_FILE, ROOT_DIR
 from curation_app.context import (
     STATE_SOURCE_ID,
     enabled_source_ids,
@@ -269,9 +269,9 @@ def render() -> None:
             selected_ontologies = selected_values
 
     include_existing_curated = st.checkbox(
-        "Include pairs already curated",
+        "Include pairs already reviewed",
         value=False,
-        help="If off, candidate pairs already present in curated alignments are excluded.",
+        help="If off, approved/rejected/deprecated and manual rows already present in this schema TSV are excluded.",
     )
 
     st.caption("Curator is fixed to `auto` at generation time.")
@@ -325,7 +325,7 @@ def render() -> None:
         "--left-source",
         left_slug.upper(),
         "--curated-alignments",
-        to_relpath(DEFAULT_CURATED_FILE),
+        to_relpath(left_ctx.candidates_tsv),
         "--output",
         to_relpath(left_ctx.candidates_tsv),
         "--max-left-terms",

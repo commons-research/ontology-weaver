@@ -1,12 +1,17 @@
 # Pairwise + SQLite Workflow
 
-This is the only supported workflow in this repo.
+This is the supported curation workflow in this repo.
 
 ## Goal
-Curate mappings from source ontology terms to canonical ontology terms, then export:
+Keep one review TSV per schema in Git:
+
+- `registry/pair_alignment_candidates_<source>.tsv`
+
+Generate local cache/export artefacts when needed:
+
 - `registry/reconciled_mappings.tsv` (source -> canonical)
 - `registry/reconciled_canonical_groups.tsv` (canonical with associated source terms)
-- `registry/alignment_curation.sqlite` (SQLite source of truth)
+- `registry/alignment_curation.sqlite` (SQLite cache for inspection/app features)
 
 ## 0) Download external ontology/vocabulary sources
 
@@ -37,7 +42,7 @@ The extracted TSV now includes curator context columns:
 - `range_iris`
 - `parent_iris`
 
-## 2) Generate candidate matches with OLS
+## 2) Generate or refresh candidate matches with OLS
 
 ```bash
 scripts/suggest_pairwise_alignments.py \
@@ -48,12 +53,14 @@ scripts/suggest_pairwise_alignments.py \
   --ols-fetch-metadata \
   --request-timeout 3 \
   --max-left-terms 100 \
-  --output registry/pair_alignment_candidates.tsv
+  --curated-alignments registry/pair_alignment_candidates_emi.tsv \
+  --output registry/pair_alignment_candidates_emi.tsv
 ```
 
 Notes:
 - `--ols-fetch-metadata` tries to pull `definition/comment/example` from OLS term endpoint.
 - Metadata availability depends on the source ontology in OLS; some terms have none.
+- The output file is also the long-lived review file. Regeneration keeps approved/rejected/deprecated rows and manual additions, then refreshes the auto-suggested `needs_review` rows.
 
 Candidate table includes:
 - OLS suggestion columns (`right_*`)
@@ -61,17 +68,17 @@ Candidate table includes:
 
 ## 3) Curate 3 rows (manual edit in TSV)
 
-Open `registry/pair_alignment_candidates.tsv` and curate three rows:
+Open `registry/pair_alignment_candidates_emi.tsv` and curate rows in place:
 
 1. `EMI canonical is correct`:
 - set `status=approved`
 - set `canonical_from=left`
-- leave `canonical_term_*` empty (auto-filled during finalize)
+- fill `canonical_term_*` from the left term, or use the curation UI quick action which fills them automatically
 
 2. `OLS suggestion is correct`:
 - set `status=approved`
 - set `canonical_from=right`
-- leave `canonical_term_*` empty (auto-filled during finalize)
+- fill `canonical_term_*` from the right term, or use the curation UI quick action which fills them automatically
 
 3. `Need a new canonical term found via lookup URL`:
 - use `ols_search_url` (or `bioportal_search_url`) from that row
@@ -92,7 +99,7 @@ Alternative (recommended) lightweight reviewer UI in terminal:
 
 ```bash
 scripts/review_pair_candidates.py \
-  --candidates-file registry/pair_alignment_candidates.tsv \
+  --candidates-file registry/pair_alignment_candidates_emi.tsv \
   --status-filter needs_review \
   --reviewer your_name
 ```
@@ -104,42 +111,42 @@ Actions per row:
 - `4` reject
 - `5` skip
 
-## 4) Finalize approved rows
+## 4) Validate
 
 ```bash
-scripts/finalize_pair_alignment_candidates.py --statuses approved
+scripts/validate_pair_alignments.py registry/pair_alignment_candidates_emi.tsv --kind candidate
 ```
 
-What this does:
-- moves approved candidate rows to `registry/pair_alignments.tsv`
-- creates `registry/pair_alignments.tsv` automatically if missing
-- assigns stable `ALIGN_*` ids
-- fills `date_reviewed` if empty
-- normalizes/cleans review notes
-- auto-fills canonical fields when `canonical_from=left|right`
-
-## 5) Validate
-
-```bash
-scripts/validate_pair_alignments.py registry/pair_alignment_candidates.tsv --kind candidate
-scripts/validate_pair_alignments.py registry/pair_alignments.tsv --kind curated
-```
-
-## 6) Sync into SQLite + export canonical outputs
+## 5) Sync into SQLite + export canonical outputs
 
 ```bash
 scripts/sync_alignment_sqlite.py \
   --db registry/alignment_curation.sqlite \
-  --pair-candidates registry/pair_alignment_candidates.tsv \
-  --pair-alignments registry/pair_alignments.tsv \
+  --pair-candidates registry/pair_alignment_candidates_emi.tsv \
+  --pair-alignments registry/pair_alignment_candidates_emi.tsv \
   --status approved \
   --reconciled-output registry/reconciled_mappings.tsv \
   --grouped-output registry/reconciled_canonical_groups.tsv
 ```
 
-## 7) Inspect canonical groups in SQLite
+## 6) Inspect canonical groups in SQLite
 
 ```bash
 sqlite3 registry/alignment_curation.sqlite \
   "SELECT canonical_term_iri, canonical_term_label, mapped_term_count FROM reconciled_canonical_groups ORDER BY mapped_term_count DESC;"
 ```
+
+## Git contract
+
+Commit:
+
+- `registry/pair_alignment_candidates_<source>.tsv`
+- `registry/external_sources.tsv` when the manifest changes
+
+Keep local only:
+
+- downloads/import extracts
+- SQLite DB
+- reconciled exports
+- schema documentation
+- `registry/pair_alignments.tsv` legacy file if you still generate it locally

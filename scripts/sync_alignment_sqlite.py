@@ -91,8 +91,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--pair-alignments",
         type=Path,
-        default=Path("registry/pair_alignments.tsv"),
-        help="Curated pair alignment TSV",
+        default=None,
+        help=(
+            "Optional curated/reviewed TSV. "
+            "Defaults to --pair-candidates when omitted or absent."
+        ),
     )
     parser.add_argument(
         "--status",
@@ -516,7 +519,10 @@ def fetch_all(conn: sqlite3.Connection, table_name: str, columns: list[str]) -> 
 def sync(args: argparse.Namespace) -> int:
     """Run full TSV->SQLite->reconciled-TSV synchronization flow."""
     pair_candidates = read_tsv(args.pair_candidates)
-    pair_alignments = read_tsv(args.pair_alignments)
+    pair_alignments_path = args.pair_alignments
+    if pair_alignments_path is None or not pair_alignments_path.is_file():
+        pair_alignments_path = args.pair_candidates
+    pair_alignments = read_tsv(pair_alignments_path)
 
     args.db.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(args.db)
