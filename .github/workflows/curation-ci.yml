@@ -49,7 +49,7 @@ jobs:
             tmpdir="$(mktemp -d)"
             uv run python scripts/sync_alignment_sqlite.py \
               --db "${tmpdir}/${source}.sqlite" \
-              --pair-candidates "registry/work/pair_alignment_candidates_${source}.tsv" \
+              --pair-candidates "registry/pair_alignment_candidates_${source}.tsv" \
               --pair-alignments "registry/pair_alignment_candidates_${source}.tsv" \
               --reconciled-output "${tmpdir}/${source}_reconciled.tsv" \
               --grouped-output "${tmpdir}/${source}_grouped.tsv"
