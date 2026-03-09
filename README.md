@@ -92,6 +92,26 @@ Each schema should have one TSV that contains:
 - approved review decisions
 
 This versioned TSV is the shared review ledger and SSOT for exports.
+It is kept deterministically sorted by `source_term_iri` and written with LF line endings so Git diffs stay row-local.
+
+Minimal shared ledger columns:
+
+- `source_term_source`
+- `source_term_iri`
+- `source_term_label`
+- `source_term_kind`
+- `canonical_term_iri`
+- `canonical_term_label`
+- `canonical_term_source`
+- `canonical_term_kind`
+- `relation`
+- `status`
+- `curator`
+- `curator_name`
+- `reviewer`
+- `reviewer_name`
+- `date_reviewed`
+- `curation_comment`
 
 ## Local generated artefacts
 
@@ -120,7 +140,7 @@ Use shared schema files (no per-curator filenames) and collaborate through branc
 1. Pull latest `main` and create a branch: `curation/<schema>-<short-topic>`.
 2. In the app sidebar, select:
    - `Source ID` (schema you curate)
-   - `Curator` (your name/id)
+   - `Curator ORCID` (must resolve to a public ORCID name)
 3. The shared review ledger for that schema is:
    - `registry/pair_alignment_candidates_<source>.tsv`
 4. Generate and curate locally in:
@@ -134,6 +154,8 @@ Use shared schema files (no per-curator filenames) and collaborate through branc
 7. Reviewer checks diff + app preview, then merges.
 
 Notes:
-- Reviewer attribution is stored in TSV `reviewer`/`date_reviewed` fields.
+- `curator` may be `auto` or a valid ORCID. When it is an ORCID, `curator_name` stores the public ORCID name.
+- `reviewer` must be a valid ORCID on reviewed rows. `reviewer_name` stores the public ORCID name.
+- Reviewer attribution is stored in TSV `reviewer`/`reviewer_name`/`date_reviewed` fields.
 - SQLite/reconciled exports are local cache files and should not be manually edited or committed.
 - Focused local regeneration is safe because `needs_review` queue rows stay under `registry/work/`.

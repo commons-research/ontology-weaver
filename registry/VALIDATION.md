@@ -12,41 +12,52 @@ This repository uses a one-TSV-per-schema review workflow plus local derived exp
   - `registry/reconciled_canonical_groups.tsv`
   - `registry/alignment_curation.sqlite`
 
-## Required columns (`pair_*` TSV)
-- `alignment_id`
-- `left_source`
-- `left_term_iri`
-- `left_label`
-- `right_source`
-- `right_term_iri`
-- `right_label`
-- `match_method`
-- `match_score`
-- `relation`
-- `suggestion_source`
-- `canonical_from`
+## Required columns
+Shared review ledger:
+- `source_term_source`
+- `source_term_iri`
+- `source_term_label`
+- `source_term_kind`
 - `canonical_term_iri`
 - `canonical_term_label`
 - `canonical_term_source`
+- `canonical_term_kind`
+- `relation`
 - `status`
 - `curator`
-- `date_added`
+- `curator_name`
+- `reviewer`
+- `reviewer_name`
+- `date_reviewed`
+- `curation_comment`
+
+The shared review ledger is deterministically sorted by `source_term_iri` and normalized to LF line endings.
+
+Local queue:
+- full candidate-generation/review columns, including `right_*`, matching metadata, search URLs, and review fields
 
 ## Allowed values
 - `alignment_id`:
-  - review ledger / local queue rows: `CAND_0001`, `CAND_0002`, ...
-- `relation`: `exact|close|broad|narrow|related`
+  - local queue rows only: `CAND_0001`, `CAND_0002`, ...
+- `relation`: `exact|close|broad|narrow|related|owl:*|rdfs:*|skos:*` from the supported mapping set
 - `status`: `needs_review|approved|rejected|deprecated`
 - `canonical_from`: `left|right|manual` (or empty before approval)
+- `curator`: `auto` or a valid ORCID
+- `reviewer`: empty on open rows, valid ORCID on reviewed rows
+- `source_term_kind` / `canonical_term_kind`: `class|property|individual`
 
 ## Decision rules
 - If `status=approved`, canonical fields are required:
-  - `canonical_from`
   - `canonical_term_iri`
   - `canonical_term_label`
   - `canonical_term_source`
-- `match_score` must be numeric in `[0,1]`.
-- `left_term_iri` and `right_term_iri` must be present.
+  - `canonical_term_kind`
+- If `curator` is an ORCID, `curator_name` is required.
+- If `reviewer` is set, `reviewer_name` is required.
+- If `status` is `approved|rejected|deprecated`, `reviewer` must be present and must be a valid ORCID.
+- Approved rows require identical `source_term_kind` and `canonical_term_kind`.
+- In local queue files, `match_score` must be numeric in `[0,1]`.
+- In local queue files, `right_term_iri` may be empty only for placeholder `needs_review` rows.
 
 ## Timestamp format
 - Accepted:

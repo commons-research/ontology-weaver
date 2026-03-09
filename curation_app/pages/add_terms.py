@@ -39,6 +39,7 @@ STATE_LEFT_DEFINITION = "add_terms_left_definition"
 STATE_LEFT_COMMENT = "add_terms_left_comment"
 STATE_LEFT_EXAMPLE = "add_terms_left_example"
 STATE_PENDING_PREFILL = "add_terms_pending_prefill"
+STATE_CURATOR_NAME = "active_curator_name"
 
 TERM_REQUIRED_COLUMNS = [
     "iri",
@@ -269,11 +270,13 @@ def render() -> None:
         return
 
     active_curator = str(st.session_state.get(STATE_CURATOR, "") or "").strip()
-    if not active_curator:
-        st.error("Set a Curator name in the left sidebar before adding terms.")
+    active_curator_name = str(st.session_state.get(STATE_CURATOR_NAME, "") or "").strip()
+    if not active_curator or not active_curator_name:
+        st.error("Set a valid Curator ORCID with a resolvable public name in the left sidebar before adding terms.")
         return
 
     st.caption(f"Active source: `{ctx.source_label}`")
+    st.caption(f"Active curator: `{active_curator_name}` ({active_curator})")
     st.caption(f"Terms file: `{to_relpath(ctx.terms_tsv)}`")
     st.caption(f"Review ledger: `{to_relpath(ctx.review_tsv)}`")
     st.caption(f"Local queue: `{to_relpath(ctx.queue_tsv)}`")
@@ -625,10 +628,13 @@ def render() -> None:
             entry["canonical_term_iri"] = ""
             entry["canonical_term_label"] = ""
             entry["canonical_term_source"] = ""
+            entry["canonical_term_kind"] = ""
             entry["reviewer"] = ""
+            entry["reviewer_name"] = ""
             entry["date_reviewed"] = ""
             entry["date_added"] = now_ts
             entry["curator"] = active_curator
+            entry["curator_name"] = active_curator_name
             entry["ols_search_url"] = _ols_search_url(label)
             entry["bioportal_search_url"] = _bioportal_search_url(label)
             entry["ols_term_api_url"] = right_iri
@@ -676,10 +682,13 @@ def render() -> None:
                 entry["canonical_term_iri"] = ""
                 entry["canonical_term_label"] = ""
                 entry["canonical_term_source"] = ""
+                entry["canonical_term_kind"] = ""
                 entry["reviewer"] = ""
+                entry["reviewer_name"] = ""
                 entry["date_reviewed"] = ""
                 entry["date_added"] = now_ts
                 entry["curator"] = active_curator
+                entry["curator_name"] = active_curator_name
                 entry["ols_search_url"] = _ols_search_url(label)
                 entry["bioportal_search_url"] = _bioportal_search_url(label)
                 entry["ols_term_api_url"] = ""

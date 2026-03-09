@@ -18,10 +18,8 @@ from curation_app.helpers import (
 
 VIEW_OPTIONS = [
     "All rows",
-    "Reviewed rows (not needs_review)",
-    "Automatically matched and manually validated",
-    "Original terms kept",
-    "Manually added terms",
+    "Approved mappings",
+    "Recently reviewed",
 ]
 
 OWL_EQUIVALENT_CLASS = "http://www.w3.org/2002/07/owl#equivalentClass"
@@ -36,6 +34,23 @@ SKOS_CLOSE_MATCH = "http://www.w3.org/2004/02/skos/core#closeMatch"
 SKOS_BROAD_MATCH = "http://www.w3.org/2004/02/skos/core#broadMatch"
 SKOS_NARROW_MATCH = "http://www.w3.org/2004/02/skos/core#narrowMatch"
 SKOS_RELATED_MATCH = "http://www.w3.org/2004/02/skos/core#relatedMatch"
+
+KNOWN_NAMESPACE_PREFIXES: dict[str, str] = {
+    "owl": "http://www.w3.org/2002/07/owl#",
+    "rdf": "http://www.w3.org/1999/02/22-rdf-syntax-ns#",
+    "rdfs": "http://www.w3.org/2000/01/rdf-schema#",
+    "xsd": "http://www.w3.org/2001/XMLSchema#",
+    "dcterms": "http://purl.org/dc/terms/",
+    "dcam": "http://purl.org/dc/dcam/",
+    "bibo": "http://purl.org/ontology/bibo/",
+    "vann": "http://purl.org/vocab/vann/",
+    "schema": "http://schema.org/",
+    "foaf": "http://xmlns.com/foaf/0.1/",
+    "widoco": "https://w3id.org/widoco/vocab#",
+    "prov": "http://www.w3.org/ns/prov-o-20130430#",
+    "skos": "http://www.w3.org/2004/02/skos/core#",
+    "sosa": "http://www.w3.org/ns/sosa/",
+}
 
 
 def _safe_text(value: object) -> str:
@@ -52,14 +67,13 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     if "curation_comment" not in out.columns:
         out["curation_comment"] = ""
     for col in [
-        "alignment_id",
-        "left_source",
-        "left_term_iri",
-        "left_label",
+        "source_term_source",
+        "source_term_iri",
+        "source_term_label",
         "right_source",
         "right_term_iri",
         "right_label",
-        "left_term_kind",
+        "source_term_kind",
         "right_term_kind",
         "relation",
         "status",
@@ -67,6 +81,7 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
         "canonical_term_iri",
         "canonical_term_label",
         "canonical_term_source",
+        "canonical_term_kind",
         "match_method",
         "suggestion_source",
         "logs",
@@ -74,6 +89,14 @@ def _ensure_columns(df: pd.DataFrame) -> pd.DataFrame:
     ]:
         if col not in out.columns:
             out[col] = ""
+    if "left_source" not in out.columns:
+        out["left_source"] = out["source_term_source"]
+    if "left_term_iri" not in out.columns:
+        out["left_term_iri"] = out["source_term_iri"]
+    if "left_label" not in out.columns:
+        out["left_label"] = out["source_term_label"]
+    if "left_term_kind" not in out.columns:
+        out["left_term_kind"] = out["source_term_kind"]
     return out
 
 
@@ -126,8 +149,8 @@ def _build_mapping_triples(df: pd.DataFrame) -> tuple[str, int, list[str]]:
         if not relation_bucket:
             continue
         left_kind = _normalize_kind(row.get("left_term_kind"))
-        right_kind = _normalize_kind(row.get("right_term_kind"))
-        kind = left_kind or right_kind
+        canonical_kind = _normalize_kind(row.get("canonical_term_kind"))
+        kind = canonical_kind or left_kind
 
         if relation_bucket == "owl_equivalent_class":
             triples.add((left_iri, OWL_EQUIVALENT_CLASS, right_iri))
@@ -205,14 +228,7 @@ def _build_mapping_triples(df: pd.DataFrame) -> tuple[str, int, list[str]]:
 
 
 def _canonical_target_iri(row: pd.Series) -> str:
-    canonical = _safe_text(row.get("canonical_term_iri"))
-    if canonical:
-        return canonical
-    # Backward compatibility: approved right-side rows may still rely on right_term_iri.
-    if _safe_text(row.get("status")) == "approved":
-        if _safe_text(row.get("canonical_from")) in {"right", "manual", ""}:
-            return _safe_text(row.get("right_term_iri"))
-    return ""
+    return _safe_text(row.get("canonical_term_iri"))
 
 
 def _build_replacements(df: pd.DataFrame) -> tuple[dict[str, str], list[str]]:
@@ -324,7 +340,72 @@ def _sanitize_prefix_name(value: str) -> str:
 
 
 def _safe_qname_local(local: str) -> bool:
-    return bool(re.match(r"^[A-Za-z_][A-Za-z0-9_.-]*$", local or ""))
+    return bool(re.match(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$", local or ""))
+
+
+def _split_ttl_header_body(ttl_text: str) -> tuple[list[str], list[str]]:
+    lines = ttl_text.splitlines()
+    body_start = len(lines)
+    in_header = True
+    for i, line in enumerate(lines):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if in_header and stripped.startswith("#"):
+            continue
+        if re.match(r"@prefix\s+([A-Za-z][\w\-]*)?:\s*<[^>]+>\s*\.\s*$", stripped, flags=re.IGNORECASE):
+            continue
+        if re.match(r"PREFIX\s+([A-Za-z][\w\-]*)?:\s*<[^>]+>\s*$", stripped, flags=re.IGNORECASE):
+            continue
+        if re.match(r"@base\s+<[^>]+>\s*\.\s*$", stripped, flags=re.IGNORECASE):
+            continue
+        body_start = i
+        break
+    return lines[:body_start], lines[body_start:]
+
+
+def _known_prefix_binding(iri: str, prefixes: dict[str, str]) -> tuple[str, str, str] | None:
+    for prefix, ns in prefixes.items():
+        if iri.startswith(ns):
+            local = iri[len(ns):]
+            if local and _safe_qname_local(local):
+                return prefix, ns, local
+    return None
+
+
+def _stem_prefix_binding(iri: str) -> tuple[str, str, str] | None:
+    ns, local = _split_namespace_local(iri)
+    if not ns or not local:
+        return None
+    stem_match = re.match(r"^([A-Za-z][A-Za-z0-9]+)_(.+)$", local)
+    if not stem_match:
+        return None
+    ontology_stem = stem_match.group(1)
+    suffix = stem_match.group(2)
+    if not _safe_qname_local(suffix):
+        return None
+    prefix = _sanitize_prefix_name(ontology_stem)
+    return prefix, f"{ns}{ontology_stem}_", suffix
+
+
+def _preferred_prefix_binding(iri: str, source_hint: str = "") -> tuple[str, str, str] | None:
+    for prefix, ns in KNOWN_NAMESPACE_PREFIXES.items():
+        if iri.startswith(ns):
+            local = iri[len(ns):]
+            if local and _safe_qname_local(local):
+                return prefix, ns, local
+
+    stem_binding = _stem_prefix_binding(iri)
+    if stem_binding is not None:
+        return stem_binding
+
+    ns, local = _split_namespace_local(iri)
+    if not ns or not local:
+        return None
+    if not _safe_qname_local(local):
+        return None
+    prefix = _sanitize_prefix_name(source_hint or "ext")
+    return prefix, ns, local
 
 
 def _insert_prefixes_in_header(ttl_text: str, new_prefixes: dict[str, str]) -> str:
@@ -348,33 +429,68 @@ def _insert_prefixes_in_header(ttl_text: str, new_prefixes: dict[str, str]) -> s
     return "\n".join(out) + ("\n" if ttl_text.endswith("\n") else "")
 
 
-def _compact_replacement_iris_with_prefixes(
+def _prune_unused_prefixes(ttl_text: str) -> str:
+    header_lines, body_lines = _split_ttl_header_body(ttl_text)
+    body_text = "\n".join(body_lines)
+    used_prefixes: set[str] = set()
+    for match in re.finditer(r"(?<![\w:/#.-])([A-Za-z][\w\-]*)\:([A-Za-z0-9_][A-Za-z0-9_.-]*)", body_text):
+        used_prefixes.add(match.group(1))
+    if re.search(r"(?<![\w:/#.-])\:([A-Za-z0-9_][A-Za-z0-9_.-]*)", body_text):
+        used_prefixes.add("")
+
+    kept_header: list[str] = []
+    for line in header_lines:
+        stripped = line.strip()
+        match = re.match(r"@prefix\s+([A-Za-z][\w\-]*)?:\s*<[^>]+>\s*\.\s*$", stripped, flags=re.IGNORECASE)
+        if not match:
+            kept_header.append(line)
+            continue
+        prefix = (match.group(1) or "").strip()
+        if prefix in used_prefixes:
+            kept_header.append(line)
+
+    out_lines = kept_header + body_lines
+    out = "\n".join(out_lines)
+    return out + ("\n" if ttl_text.endswith("\n") else "")
+
+
+def _compact_ttl_iris_with_prefixes(
     ttl_text: str,
     export_df: pd.DataFrame,
     replacements: dict[str, str],
 ) -> tuple[str, dict[str, str]]:
-    if not replacements:
-        return ttl_text, {}
     existing_prefixes = _parse_ttl_prefixes(ttl_text)
-    iri_to_source: dict[str, str] = {}
-    for _, row in export_df.iterrows():
-        target = _canonical_target_iri(row)
-        if not target:
-            continue
-        source = _safe_text(row.get("canonical_term_source")) or _safe_text(row.get("right_source"))
-        if source and target not in iri_to_source:
-            iri_to_source[target] = source
 
-    iri_to_qname: dict[str, str] = {}
     new_prefixes: dict[str, str] = {}
-    used_prefixes = set(existing_prefixes.keys())
+    iri_to_qname: dict[str, str] = {}
+    _, body_lines = _split_ttl_header_body(ttl_text)
+    body_text = "\n".join(body_lines)
+    body_iris = set(re.findall(r"<([^>]+)>", body_text))
 
-    unique_targets = sorted(set(replacements.values()), key=len, reverse=True)
-    for iri in unique_targets:
-        ns, local = _split_namespace_local(iri)
-        if not ns or not local or not _safe_qname_local(local):
+    reusable_prefixes = dict(existing_prefixes)
+    for prefix, ns in KNOWN_NAMESPACE_PREFIXES.items():
+        existing_ns = reusable_prefixes.get(prefix)
+        if existing_ns is None:
+            reusable_prefixes[prefix] = ns
+
+    for iri in sorted(body_iris, key=len, reverse=True):
+        binding = _known_prefix_binding(iri, reusable_prefixes)
+        if binding is None:
             continue
-        preferred = _sanitize_prefix_name(iri_to_source.get(iri, "ext"))
+        prefix, ns, local = binding
+        if prefix not in existing_prefixes and prefix not in new_prefixes:
+            new_prefixes[prefix] = ns
+        iri_to_qname[iri] = f"{prefix}:{local}"
+
+    target_iris = sorted(set(replacements.values()) | set(export_df["canonical_term_iri"].dropna().astype(str)), key=len, reverse=True)
+    for iri in target_iris:
+        iri = _safe_text(iri)
+        if not iri:
+            continue
+        binding = _preferred_prefix_binding(iri)
+        if binding is None:
+            continue
+        preferred, ns, local = binding
         prefix = preferred
         counter = 2
         while True:
@@ -387,53 +503,34 @@ def _compact_replacement_iris_with_prefixes(
             counter += 1
         if prefix not in existing_prefixes and prefix not in new_prefixes:
             new_prefixes[prefix] = ns
-        used_prefixes.add(prefix)
         iri_to_qname[iri] = f"{prefix}:{local}"
 
     updated = ttl_text
-    for iri in unique_targets:
-        qname = iri_to_qname.get(iri)
-        if not qname:
-            continue
-        updated = updated.replace(f"<{iri}>", qname)
+    if new_prefixes:
+        updated = _insert_prefixes_in_header(updated, new_prefixes)
 
-    updated = _insert_prefixes_in_header(updated, new_prefixes)
-    return updated, new_prefixes
+    header_lines, body_lines = _split_ttl_header_body(updated)
+    body_text = "\n".join(body_lines)
+    for iri in sorted(iri_to_qname.keys(), key=len, reverse=True):
+        body_text = body_text.replace(f"<{iri}>", iri_to_qname[iri])
+
+    out = "\n".join(header_lines + body_lines[:0] + [body_text])
+    out += "\n" if ttl_text.endswith("\n") else ""
+    out = _prune_unused_prefixes(out)
+
+    kept_prefixes = _parse_ttl_prefixes(out)
+    added_prefixes = {p: ns for p, ns in new_prefixes.items() if kept_prefixes.get(p) == ns}
+    return out, added_prefixes
 
 
 def _apply_view(df: pd.DataFrame, view: str) -> pd.DataFrame:
     if df.empty:
         return df
-    if view == "Reviewed rows (not needs_review)":
-        return df[df["status"] != "needs_review"]
-    if view == "Automatically matched and manually validated":
-        return df[
-            (df["status"] == "approved")
-            & (df["suggestion_source"] == "manual_curated")
-            & (~df["match_method"].str.startswith("manual_", na=False))
-        ]
-    if view == "Original terms kept":
-        # Left terms where all rows are rejected and logs indicate keep-left decision.
-        grouped = (
-            df.groupby(["left_source", "left_term_iri"], dropna=False)
-            .agg(
-                all_rejected=("status", lambda s: all(_safe_text(v) == "rejected" for v in s)),
-                logs=("logs", lambda s: " | ".join(_safe_text(v) for v in s)),
-            )
-            .reset_index()
-        )
-        keep_groups = grouped[
-            grouped["all_rejected"]
-            & grouped["logs"].str.lower().str.contains("kept current left term", na=False)
-        ][["left_source", "left_term_iri"]]
-        if keep_groups.empty:
-            return df.iloc[0:0]
-        return df.merge(keep_groups, on=["left_source", "left_term_iri"], how="inner")
-    if view == "Manually added terms":
-        return df[
-            df["match_method"].str.startswith("manual_", na=False)
-            | (df["suggestion_source"] == "manual_search")
-        ]
+    if view == "Approved mappings":
+        return df[df["status"] == "approved"]
+    if view == "Recently reviewed":
+        out = df[df["date_reviewed"].astype(str).str.strip() != ""].copy()
+        return out.sort_values(by="date_reviewed", ascending=False)
     return df
 
 
@@ -461,11 +558,11 @@ def render() -> None:
         hay = (
             shown["left_label"].str.lower()
             + " "
-            + shown["right_label"].str.lower()
+            + shown["canonical_term_label"].str.lower()
             + " "
             + shown["left_term_iri"].str.lower()
             + " "
-            + shown["right_term_iri"].str.lower()
+            + shown["canonical_term_iri"].str.lower()
             + " "
             + shown["logs"].str.lower()
             + " "
@@ -520,8 +617,8 @@ def render() -> None:
     source_ttl_text = source_ttl_path.read_text(encoding="utf-8", errors="replace")
     replacements, replacement_warnings = _build_replacements(export_df)
     ttl_text = _apply_iri_and_qname_replacements(source_ttl_text, replacements)
-    ttl_text, added_prefixes = _compact_replacement_iris_with_prefixes(ttl_text, export_df, replacements)
     mapping_ttl_text = ""
+    mapping_export_text = ""
     mapping_triple_count = 0
     if emit_mapping_triples:
         mapping_ttl_text, mapping_triple_count, mapping_notes = _build_mapping_triples(export_df)
@@ -529,6 +626,9 @@ def render() -> None:
             st.warning(msg)
         if embed_mapping_triples and mapping_ttl_text:
             ttl_text = ttl_text.rstrip() + "\n" + mapping_ttl_text
+        if mapping_ttl_text:
+            mapping_export_text, _ = _compact_ttl_iris_with_prefixes(mapping_ttl_text, export_df, replacements)
+    ttl_text, added_prefixes = _compact_ttl_iris_with_prefixes(ttl_text, export_df, replacements)
 
     for msg in replacement_warnings:
         st.warning(msg)
@@ -555,7 +655,7 @@ def render() -> None:
         if st.button("Write TTL file", type="primary"):
             ttl_path.write_text(ttl_text, encoding="utf-8")
             if emit_mapping_triples and write_mapping_file:
-                mapping_path.write_text(mapping_ttl_text.strip() + "\n", encoding="utf-8")
+                mapping_path.write_text(mapping_export_text.strip() + "\n", encoding="utf-8")
             st.success(f"Wrote `{to_relpath(ttl_path)}`")
             if emit_mapping_triples and write_mapping_file:
                 st.success(f"Wrote `{to_relpath(mapping_path)}`")

@@ -122,6 +122,17 @@ def clean(value: str) -> str:
     return (value or "").strip()
 
 
+def stable_alignment_id(row: dict[str, str]) -> str:
+    """Return queue alignment_id or derive a stable internal ID for shared-ledger rows."""
+    explicit = clean(row.get("alignment_id", ""))
+    if explicit:
+        return explicit
+    source_term_iri = clean(row.get("source_term_iri", "")) or clean(row.get("left_term_iri", ""))
+    if source_term_iri:
+        return f"LEDGER::{source_term_iri}"
+    return ""
+
+
 def read_tsv(path: Path) -> list[dict[str, str]]:
     """Read TSV rows as dictionaries."""
     if not path.is_file():
@@ -272,6 +283,14 @@ def insert_pair_rows(
         for col in PAIR_ALIGNMENT_COLUMNS:
             if col == "match_score":
                 values.append(to_float_or_none(row.get(col, "")))
+            elif col == "alignment_id":
+                values.append(stable_alignment_id(row))
+            elif col == "left_source":
+                values.append(clean(row.get("left_source", "")) or clean(row.get("source_term_source", "")))
+            elif col == "left_term_iri":
+                values.append(clean(row.get("left_term_iri", "")) or clean(row.get("source_term_iri", "")))
+            elif col == "left_label":
+                values.append(clean(row.get("left_label", "")) or clean(row.get("source_term_label", "")))
             else:
                 values.append(clean(row.get(col, "")))
         conn.execute(sql, values)
@@ -343,104 +362,42 @@ def build_reconciled_rows(
         if clean(row.get("status", "")).lower() != status_filter.lower():
             continue
 
-        alignment_id = clean(row.get("alignment_id", ""))
+        alignment_id = stable_alignment_id(row)
         relation = clean(row.get("relation", ""))
-        suggestion_source = clean(row.get("suggestion_source", ""))
+        suggestion_source = clean(row.get("suggestion_source", "")) or "approved_ledger"
         curator = clean(row.get("curator", ""))
         reviewer = clean(row.get("reviewer", ""))
-        date_added = clean(row.get("date_added", ""))
         date_reviewed = clean(row.get("date_reviewed", ""))
-        notes = clean(row.get("notes", ""))
+        date_added = clean(row.get("date_added", "")) or date_reviewed
+        notes = clean(row.get("notes", "")) or clean(row.get("curation_comment", ""))
 
-        left_source = clean(row.get("left_source", ""))
-        left_iri = clean(row.get("left_term_iri", ""))
-        left_label = clean(row.get("left_label", ""))
-        right_source = clean(row.get("right_source", ""))
-        right_iri = clean(row.get("right_term_iri", ""))
-        right_label = clean(row.get("right_label", ""))
-
-        canonical_from = clean(row.get("canonical_from", "")).lower()
+        left_source = clean(row.get("source_term_source", "")) or clean(row.get("left_source", ""))
+        left_iri = clean(row.get("source_term_iri", "")) or clean(row.get("left_term_iri", ""))
+        left_label = clean(row.get("source_term_label", "")) or clean(row.get("left_label", ""))
         canonical_iri = clean(row.get("canonical_term_iri", ""))
         canonical_label = clean(row.get("canonical_term_label", ""))
         canonical_source = clean(row.get("canonical_term_source", ""))
         if not (canonical_iri and canonical_label and canonical_source):
             continue
 
-        if canonical_from == "right":
-            append_source_mapping(
-                out_rows,
-                seen_keys,
-                alignment_id=alignment_id,
-                source_term_source=left_source,
-                source_term_iri=left_iri,
-                source_term_label=left_label,
-                canonical_term_iri=canonical_iri,
-                canonical_term_label=canonical_label,
-                canonical_term_source=canonical_source,
-                relation=relation,
-                suggestion_source=suggestion_source,
-                curator=curator,
-                reviewer=reviewer,
-                date_added=date_added,
-                date_reviewed=date_reviewed,
-                notes=notes,
-            )
-        elif canonical_from == "left":
-            append_source_mapping(
-                out_rows,
-                seen_keys,
-                alignment_id=alignment_id,
-                source_term_source=right_source,
-                source_term_iri=right_iri,
-                source_term_label=right_label,
-                canonical_term_iri=canonical_iri,
-                canonical_term_label=canonical_label,
-                canonical_term_source=canonical_source,
-                relation=relation,
-                suggestion_source=suggestion_source,
-                curator=curator,
-                reviewer=reviewer,
-                date_added=date_added,
-                date_reviewed=date_reviewed,
-                notes=notes,
-            )
-        else:
-            append_source_mapping(
-                out_rows,
-                seen_keys,
-                alignment_id=alignment_id,
-                source_term_source=left_source,
-                source_term_iri=left_iri,
-                source_term_label=left_label,
-                canonical_term_iri=canonical_iri,
-                canonical_term_label=canonical_label,
-                canonical_term_source=canonical_source,
-                relation=relation,
-                suggestion_source=suggestion_source,
-                curator=curator,
-                reviewer=reviewer,
-                date_added=date_added,
-                date_reviewed=date_reviewed,
-                notes=notes,
-            )
-            append_source_mapping(
-                out_rows,
-                seen_keys,
-                alignment_id=alignment_id,
-                source_term_source=right_source,
-                source_term_iri=right_iri,
-                source_term_label=right_label,
-                canonical_term_iri=canonical_iri,
-                canonical_term_label=canonical_label,
-                canonical_term_source=canonical_source,
-                relation=relation,
-                suggestion_source=suggestion_source,
-                curator=curator,
-                reviewer=reviewer,
-                date_added=date_added,
-                date_reviewed=date_reviewed,
-                notes=notes,
-            )
+        append_source_mapping(
+            out_rows,
+            seen_keys,
+            alignment_id=alignment_id,
+            source_term_source=left_source,
+            source_term_iri=left_iri,
+            source_term_label=left_label,
+            canonical_term_iri=canonical_iri,
+            canonical_term_label=canonical_label,
+            canonical_term_source=canonical_source,
+            relation=relation,
+            suggestion_source=suggestion_source,
+            curator=curator,
+            reviewer=reviewer,
+            date_added=date_added,
+            date_reviewed=date_reviewed,
+            notes=notes,
+        )
 
     return out_rows
 

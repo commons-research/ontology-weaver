@@ -913,11 +913,14 @@ def write_candidate_rows(
         "canonical_term_iri",
         "canonical_term_label",
         "canonical_term_source",
+        "canonical_term_kind",
         "ols_search_url",
         "bioportal_search_url",
         "status",
         "curator",
+        "curator_name",
         "reviewer",
+        "reviewer_name",
         "date_added",
         "date_reviewed",
         "notes",
@@ -946,6 +949,7 @@ def write_candidate_rows(
             canonical_term_iri = item.right_term_iri if canonical_from == "right" else ""
             canonical_term_label = item.right_label if canonical_from == "right" else ""
             canonical_term_source = current_right_source if canonical_from == "right" else ""
+            canonical_term_kind = item.right_term_kind if canonical_from == "right" else ""
             writer.writerow(
                 {
                     "alignment_id": f"CAND_{next_id:04d}",
@@ -974,11 +978,14 @@ def write_candidate_rows(
                     "canonical_term_iri": canonical_term_iri,
                     "canonical_term_label": canonical_term_label,
                     "canonical_term_source": canonical_term_source,
+                    "canonical_term_kind": canonical_term_kind,
                     "ols_search_url": ols_search_url(item.left.label),
                     "bioportal_search_url": bioportal_search_url(item.left.label),
                     "status": "needs_review",
                     "curator": curator,
+                    "curator_name": "",
                     "reviewer": "",
+                    "reviewer_name": "",
                     "date_added": now_ts,
                     "date_reviewed": "",
                     "notes": item.notes,

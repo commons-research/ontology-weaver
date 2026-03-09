@@ -170,6 +170,7 @@ def clear_canonical_fields(row: dict[str, str]) -> None:
     row["canonical_term_iri"] = ""
     row["canonical_term_label"] = ""
     row["canonical_term_source"] = ""
+    row["canonical_term_kind"] = ""
 
 
 def set_canonical_from_left(row: dict[str, str]) -> None:
@@ -178,6 +179,7 @@ def set_canonical_from_left(row: dict[str, str]) -> None:
     row["canonical_term_iri"] = (row.get("left_term_iri", "") or "").strip()
     row["canonical_term_label"] = (row.get("left_label", "") or "").strip()
     row["canonical_term_source"] = (row.get("left_source", "") or "").strip()
+    row["canonical_term_kind"] = (row.get("left_term_kind", "") or "").strip()
 
 
 def set_canonical_from_right(row: dict[str, str]) -> None:
@@ -186,6 +188,7 @@ def set_canonical_from_right(row: dict[str, str]) -> None:
     row["canonical_term_iri"] = (row.get("right_term_iri", "") or "").strip()
     row["canonical_term_label"] = (row.get("right_label", "") or "").strip()
     row["canonical_term_source"] = (row.get("right_source", "") or "").strip()
+    row["canonical_term_kind"] = (row.get("right_term_kind", "") or "").strip()
 
 
 def set_review_metadata(row: dict[str, str], reviewer: str) -> None:
@@ -223,7 +226,8 @@ def apply_action(row: dict[str, str], action: str, reviewer: str) -> bool:
         iri = input("canonical_term_iri: ").strip()
         label = input("canonical_term_label: ").strip()
         source = input("canonical_term_source (e.g. chebi/obi/ms): ").strip()
-        if not (iri and label and source):
+        kind = input("canonical_term_kind (class/property/individual): ").strip()
+        if not (iri and label and source and kind):
             print("Manual canonical requires all fields; action canceled.")
             return True
         row["status"] = "approved"
@@ -231,6 +235,7 @@ def apply_action(row: dict[str, str], action: str, reviewer: str) -> bool:
         row["canonical_term_iri"] = iri
         row["canonical_term_label"] = label
         row["canonical_term_source"] = source
+        row["canonical_term_kind"] = kind
         set_review_metadata(row, reviewer)
         row["suggestion_source"] = "manual_curated"
         row["notes"] = normalize_notes_for_approval(row.get("notes", ""))
