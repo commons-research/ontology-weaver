@@ -2179,7 +2179,7 @@ def render() -> None:
                     st.error("Ontology ID is required.")
                 else:
                     _add_manual_candidate_row(iri, ontology_id, source="manual")
-    decision_made = left_is_kept or (
+        decision_made = left_is_kept or (
             row is not None and row_idx is not None and mapping_relation_selected
         )
         if row is not None:
