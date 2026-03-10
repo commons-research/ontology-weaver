@@ -16,7 +16,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 if str(REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(REPO_ROOT))
 
-from curation_app.pages.view_schema import _build_mermaid
+from curation_app.pages.view_schema import _build_mermaid, _write_merged_ttl
 from scripts.export_updated_ttl import build_exports_for_ledger
 
 MARKER = "<!-- pr-mermaid-review -->"
@@ -119,7 +119,7 @@ def changed_rows(old_rows: dict[str, dict[str, str]], new_rows: dict[str, dict[s
     return changed
 
 
-def build_overlay_ttl(source_slug: str, tmpdir: Path) -> tuple[Path, Path]:
+def build_compare_ttls(source_slug: str, tmpdir: Path) -> tuple[Path, Path]:
     ledger_path = Path("registry") / f"pair_alignment_candidates_{source_slug}.tsv"
     source_ttl_path = Path("registry/downloads") / f"{source_slug}.ttl"
     if not ledger_path.is_file():
@@ -127,18 +127,21 @@ def build_overlay_ttl(source_slug: str, tmpdir: Path) -> tuple[Path, Path]:
     if not source_ttl_path.is_file():
         raise FileNotFoundError(source_ttl_path)
 
-    updated_ttl_text, mapping_ttl_text = build_exports_for_ledger(
+    _, mapping_ttl_text = build_exports_for_ledger(
         ledger_path=ledger_path,
         source_ttl_path=source_ttl_path,
         statuses=["approved"],
     )
 
     mapping_path = tmpdir / f"{source_slug}_mappings.ttl"
-    mapping_path.write_text(mapping_ttl_text, encoding="utf-8")
+    if mapping_ttl_text.strip():
+        mapping_path.write_text(mapping_ttl_text, encoding="utf-8")
 
-    overlay_path = tmpdir / f"{source_slug}_updated.ttl"
-    overlay_path.write_text(updated_ttl_text, encoding="utf-8")
-    return source_ttl_path, overlay_path
+    merged_path = tmpdir / f"{source_slug}_original_plus_mappings.ttl"
+    ok_merge, merge_msg = _write_merged_ttl([source_ttl_path, mapping_path], merged_path)
+    if not ok_merge:
+        raise RuntimeError(merge_msg)
+    return source_ttl_path, merged_path
 
 
 def parse_mermaid_lines(text: str) -> tuple[list[str], list[str], list[str]]:
@@ -167,15 +170,43 @@ def prefix_mermaid_ids(lines: list[str], prefix: str) -> list[str]:
     return out
 
 
+def first_mermaid_node_id(lines: list[str]) -> str | None:
+    node_pattern = re.compile(r"^\s*([A-Za-z][A-Za-z0-9_]*)\s*(?:\[|\(|\{)")
+    for line in lines:
+        match = node_pattern.match(line)
+        if match:
+            return match.group(1)
+    return None
+
+
 def combine_mermaid(before_text: str, after_text: str) -> str:
     before_nodes, before_edges, before_clicks = parse_mermaid_lines(before_text)
     after_nodes, after_edges, after_clicks = parse_mermaid_lines(after_text)
+    before_prefixed = prefix_mermaid_ids(before_nodes + before_edges + before_clicks, "before")
+    after_prefixed = prefix_mermaid_ids(after_nodes + after_edges + after_clicks, "after")
+    before_focus = first_mermaid_node_id(before_prefixed)
+    after_focus = first_mermaid_node_id(after_prefixed)
 
-    lines = ["flowchart LR", "  subgraph Before", "    direction LR"]
-    for line in prefix_mermaid_ids(before_nodes + before_edges + before_clicks, "before"):
+    lines = [
+        "flowchart LR",
+        '  before_layout[" "]',
+        '  after_layout[" "]',
+        "  style before_layout fill:transparent,stroke:transparent,color:transparent",
+        "  style after_layout fill:transparent,stroke:transparent,color:transparent",
+        "  before_layout --> after_layout",
+    ]
+    if before_focus:
+        lines.append(f"  before_layout --> {before_focus}")
+    if after_focus:
+        lines.append(f"  after_layout --> {after_focus}")
+    for idx in range(1 + int(bool(before_focus)) + int(bool(after_focus))):
+        lines.append(f"  linkStyle {idx} stroke:transparent,fill:none,opacity:0")
+
+    lines.extend(['  subgraph before_graph["**Before curation**"]', "    direction LR"])
+    for line in before_prefixed:
         lines.append(f"    {line}")
-    lines.extend(["  end", "  subgraph After", "    direction LR"])
-    for line in prefix_mermaid_ids(after_nodes + after_edges + after_clicks, "after"):
+    lines.extend(['  end', '  subgraph after_graph["**After curation**"]', "    direction LR"])
+    for line in after_prefixed:
         lines.append(f"    {line}")
     lines.append("  end")
     return "\n".join(lines) + "\n"
@@ -239,6 +270,10 @@ def generate_term_section(
     )
 
     lines = [f"### `{source_label}`", f"- Source: `{source_iri}`"]
+    lines.append(
+        "- Graph compare: **Before curation** uses the downloaded source TTL; "
+        "**After curation** uses the original source TTL plus exported mappings."
+    )
     if canonical_iri:
         target_text = f"`{canonical_label}`"
         if canonical_source:
@@ -264,7 +299,9 @@ def generate_term_section(
         left_msg = f"{left_msg} Rendered isolated source-term graph from the downloaded source TTL."
     if after_render.strip() == "flowchart LR" or not after_render.strip():
         after_render = single_node_mermaid(source_iri, source_label)
-        right_msg = f"{right_msg} Rendered isolated source-term graph from the enriched exported TTL."
+        right_msg = (
+            f"{right_msg} Rendered isolated source-term graph from the original source TTL plus exported mappings."
+        )
 
     if left_ok and right_ok:
         combined = combine_mermaid(before_render, after_render)
@@ -275,8 +312,8 @@ def generate_term_section(
                 combined.rstrip(),
                 "```",
                 "",
-                f"_Before_: {left_msg}",
-                f"_After_: {right_msg}",
+                f"**Before curation**: {left_msg}",
+                f"**After curation**: {right_msg}",
             ]
         )
     else:
@@ -284,8 +321,8 @@ def generate_term_section(
             [
                 "",
                 f"- Mermaid generation fallback for `{source_slug}`.",
-                f"- Before: {left_msg}",
-                f"- After: {right_msg}",
+                f"- **Before curation**: {left_msg}",
+                f"- **After curation**: {right_msg}",
             ]
         )
     return "\n".join(lines)
@@ -319,10 +356,10 @@ def build_comment(base_sha: str, max_terms: int, focus_hops: int, max_nodes: int
             if not changed:
                 continue
             total_changed += len(changed)
-            before_ttl, overlay_ttl = build_overlay_ttl(source_slug, tmpdir)
+            before_ttl, after_ttl = build_compare_ttls(source_slug, tmpdir)
             sections.extend(["", f"## Source `{source_slug}`", ""])
             for row in changed[:max_terms]:
-                sections.append(generate_term_section(source_slug, row, before_ttl, overlay_ttl, focus_hops, max_nodes))
+                sections.append(generate_term_section(source_slug, row, before_ttl, after_ttl, focus_hops, max_nodes))
                 sections.append("")
             if len(changed) > max_terms:
                 sections.append(
