@@ -647,15 +647,6 @@ def _normalize_kind(value: object) -> str:
     return ""
 
 
-def _self_canonical_relation(kind: object) -> str:
-    normalized = _normalize_kind(kind)
-    if normalized == "class":
-        return "owl:equivalentClass"
-    if normalized == "property":
-        return "owl:equivalentProperty"
-    return "owl:sameAs"
-
-
 def _derived_export_mapping_labels(relation: str, left_kind: object, right_kind: object) -> list[str]:
     del left_kind, right_kind
     rel_bucket = relation.strip()
@@ -2222,7 +2213,7 @@ def render() -> None:
                     new_row["canonical_term_label"] = left_label
                     new_row["canonical_term_source"] = left_source
                     new_row["canonical_term_kind"] = str(left_row_series.get("left_term_kind", "") or "")
-                    new_row["relation"] = _self_canonical_relation(left_row_series.get("left_term_kind", ""))
+                    new_row["relation"] = ""
                     new_row["suggestion_source"] = "manual_curated"
                     new_row["curator"] = "auto"
                     new_row["curator_name"] = ""
@@ -2244,7 +2235,7 @@ def render() -> None:
                             df.at[idx, "canonical_term_label"] = df.at[idx, "left_label"]
                             df.at[idx, "canonical_term_source"] = df.at[idx, "left_source"]
                             df.at[idx, "canonical_term_kind"] = df.at[idx, "left_term_kind"]
-                            df.at[idx, "relation"] = _self_canonical_relation(df.at[idx, "left_term_kind"])
+                            df.at[idx, "relation"] = ""
                             df.at[idx, "suggestion_source"] = "manual_curated"
                             log_entry = "Kept current source term; recorded source term as canonical."
                         else:
