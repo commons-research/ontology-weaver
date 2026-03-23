@@ -1562,10 +1562,7 @@ def render() -> None:
             st.success(f"Saved `{queue_file}` and synced `{review_file}`")
 
     relation_catalog, catalog_msg = _load_mapping_relations_from_local_ontologies()
-    if relation_catalog is None:
-        st.error(catalog_msg or "Mapping relation catalog unavailable.")
-        return
-    relations = relation_catalog.get("relations", [])
+    relations = relation_catalog.get("relations", []) if relation_catalog else []
     relation_options = [str(x.get("curie", "")).strip() for x in relations if str(x.get("curie", "")).strip()]
     relation_definitions = {
         str(x.get("curie", "")).strip(): str(x.get("definition", "")).strip() or str(x.get("label", "")).strip()
@@ -1573,11 +1570,11 @@ def render() -> None:
         if str(x.get("curie", "")).strip()
     }
     relation_allowed = set(relation_options)
-    if not relation_options:
-        st.error("Mapping relation catalog has no relation entries.")
-        return
     if catalog_msg:
-        st.caption(catalog_msg)
+        if relation_options:
+            st.caption(catalog_msg)
+        else:
+            st.info(f"{catalog_msg} Mapping relation selection remains optional on this page.")
 
     df = st.session_state[STATE_DF]
     review_df = read_tsv(review_file)
@@ -1749,73 +1746,76 @@ def render() -> None:
                 row_idx = int(df.index[df["alignment_id"] == selected_alignment_id][0])
                 row = df.loc[row_idx]
 
-        default_relation = _normalize_mapping_relation(
-            row.get("relation", "") if row is not None else "", relation_allowed
-        )
-        relation_select_options = [MAPPING_RELATION_PLACEHOLDER] + relation_options
-        selected_mapping_relation = st.selectbox(
-            "Mapping relation (OWL/RDFS/SKOS)",
-            options=relation_select_options,
-            index=(
-                relation_select_options.index(default_relation)
-                if default_relation in relation_select_options
-                else 0
-            ),
-            key=f"mapping_relation_{left_term_key}",
-            help="Searchable dropdown for semantic mapping relation between source term and selected mapped term.",
-        )
-        mapping_relation_selected = selected_mapping_relation in relation_allowed
-        if mapping_relation_selected:
-            st.caption(
-                _mapping_guidance_text(
+        mapping_relation_selected = False
+        selected_mapping_relation = ""
+        if relation_options:
+            default_relation = _normalize_mapping_relation(
+                row.get("relation", "") if row is not None else "", relation_allowed
+            )
+            relation_select_options = [MAPPING_RELATION_PLACEHOLDER] + relation_options
+            selected_mapping_relation = st.selectbox(
+                "Mapping relation (optional)",
+                options=relation_select_options,
+                index=(
+                    relation_select_options.index(default_relation)
+                    if default_relation in relation_select_options
+                    else 0
+                ),
+                key=f"mapping_relation_{left_term_key}",
+                help="Optional semantic relation metadata between source term and selected canonical term.",
+            )
+            mapping_relation_selected = selected_mapping_relation in relation_allowed
+            if mapping_relation_selected:
+                st.caption(
+                    _mapping_guidance_text(
+                        selected_mapping_relation,
+                        relation_definitions.get(selected_mapping_relation, ""),
+                    )
+                )
+                preview_labels = _derived_export_mapping_labels(
                     selected_mapping_relation,
-                    relation_definitions.get(selected_mapping_relation, ""),
+                    left_row_series.get("left_term_kind", ""),
+                    row.get("right_term_kind", "") if row is not None else "",
                 )
-            )
+                if preview_labels:
+                    st.caption("Derived export mappings: " + ", ".join(f"`{x}`" for x in preview_labels))
+            else:
+                st.caption("Mapping relation is optional. Leave it empty to only supersede the source term with the selected canonical term.")
+            with st.expander("Mapping guidance", expanded=False):
+                recommended_ordered = [
+                    rel for rel in MAPPING_GUIDANCE_ORDER if rel in relation_options and MAPPING_GUIDANCE.get(rel, {}).get("tier") != "advanced"
+                ]
+                advanced_ordered = [
+                    rel for rel in MAPPING_GUIDANCE_ORDER if rel in relation_options and MAPPING_GUIDANCE.get(rel, {}).get("tier") == "advanced"
+                ]
+                remaining = [rel for rel in relation_options if rel not in set(recommended_ordered + advanced_ordered)]
+
+                st.markdown("**Recommended first (ontology reconciliation)**")
+                for rel in recommended_ordered:
+                    st.markdown(
+                        f"- `{rel}`: {_mapping_guidance_text(rel, relation_definitions.get(rel, ''))}"
+                    )
+                if not recommended_ordered:
+                    st.markdown("- No recommended relations available from local mapping ontologies.")
+
+                st.markdown("**Advanced / specific modeling cases**")
+                for rel in advanced_ordered:
+                    st.markdown(
+                        f"- `{rel}`: {_mapping_guidance_text(rel, relation_definitions.get(rel, ''))}"
+                    )
+                for rel in remaining:
+                    st.markdown(f"- `{rel}`: {relation_definitions.get(rel, '')}")
         else:
-            st.caption("Select a mapping relation to enable mapping between source and target entities.")
-        if mapping_relation_selected:
-            preview_labels = _derived_export_mapping_labels(
-                selected_mapping_relation,
-                left_row_series.get("left_term_kind", ""),
-                row.get("right_term_kind", "") if row is not None else "",
-            )
-            if preview_labels:
-                st.caption("Derived export mappings: " + ", ".join(f"`{x}`" for x in preview_labels))
-        with st.expander("Mapping guidance", expanded=False):
-            recommended_ordered = [
-                rel for rel in MAPPING_GUIDANCE_ORDER if rel in relation_options and MAPPING_GUIDANCE.get(rel, {}).get("tier") != "advanced"
-            ]
-            advanced_ordered = [
-                rel for rel in MAPPING_GUIDANCE_ORDER if rel in relation_options and MAPPING_GUIDANCE.get(rel, {}).get("tier") == "advanced"
-            ]
-            remaining = [rel for rel in relation_options if rel not in set(recommended_ordered + advanced_ordered)]
-
-            st.markdown("**Recommended first (ontology reconciliation)**")
-            for rel in recommended_ordered:
-                st.markdown(
-                    f"- `{rel}`: {_mapping_guidance_text(rel, relation_definitions.get(rel, ''))}"
-                )
-            if not recommended_ordered:
-                st.markdown("- No recommended relations available from local mapping ontologies.")
-
-            st.markdown("**Advanced / specific modeling cases**")
-            for rel in advanced_ordered:
-                st.markdown(
-                    f"- `{rel}`: {_mapping_guidance_text(rel, relation_definitions.get(rel, ''))}"
-                )
-            for rel in remaining:
-                st.markdown(f"- `{rel}`: {relation_definitions.get(rel, '')}")
+            st.caption("Mapping relation metadata is unavailable locally and remains optional for validation.")
 
         st.subheader("Side-by-side context")
         left_col, right_col = st.columns(2)
         with left_col:
             st.markdown(f"**{_display_source(left_source)} term**")
-            left_card_selected = True if mapping_relation_selected else left_is_kept
             _render_term_card(
                 side="left",
                 title=left_label,
-                selected=left_card_selected,
+                selected=left_is_kept,
                 fields=[
                     ("Source", _display_source(left_row_series["left_source"])),
                     ("Kind", _display_kind(left_row_series.get("left_term_kind", ""))),
@@ -1843,15 +1843,12 @@ def render() -> None:
                         right_row.get("right_term_kind", ""),
                     )
                     has_right_decision = bool(selected_alignment_id)
-                    if mapping_relation_selected:
-                        card_state = is_selected if has_right_decision else None
+                    if left_is_kept:
+                        card_state = False
+                    elif has_right_decision:
+                        card_state = is_selected
                     else:
-                        if left_is_kept:
-                            card_state = False
-                        elif has_right_decision:
-                            card_state = is_selected
-                        else:
-                            card_state = None
+                        card_state = None
                     title = str(right_row["right_label"] or right_row["right_term_iri"] or "(no label)")
                     if is_selected:
                         title = f"{title} [selected]"
@@ -2179,9 +2176,7 @@ def render() -> None:
                     st.error("Ontology ID is required.")
                 else:
                     _add_manual_candidate_row(iri, ontology_id, source="manual")
-        decision_made = left_is_kept or (
-            row is not None and row_idx is not None and mapping_relation_selected
-        )
+        decision_made = left_is_kept or (row is not None and row_idx is not None)
         if row is not None:
             selected_left_kind = left_row_series.get("left_term_kind", "")
             selected_right_kind = row.get("right_term_kind", "")

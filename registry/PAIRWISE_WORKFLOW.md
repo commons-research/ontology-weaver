@@ -17,7 +17,7 @@ This shared ledger is intentionally minimal. It stores only approved source-to-c
 - `canonical_term_label`
 - `canonical_term_source`
 - `canonical_term_kind`
-- `relation`
+- `relation` (optional semantic mapping metadata)
 - `status`
 - `curator`
 - `curator_name`
