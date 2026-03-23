@@ -104,7 +104,7 @@ Minimal shared ledger columns:
 - `canonical_term_label`
 - `canonical_term_source`
 - `canonical_term_kind`
-- `relation`
+- `relation` (optional semantic mapping metadata)
 - `status`
 - `curator`
 - `curator_name`

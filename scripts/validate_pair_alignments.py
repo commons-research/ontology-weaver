@@ -268,7 +268,6 @@ def validate_file(path: Path, kind: str = "auto") -> list[str]:
                 or not canonical_term_label
                 or not canonical_term_source
                 or not canonical_term_kind
-                or not relation
                 or not status
                 or not curator
                 or not reviewer
@@ -342,9 +341,6 @@ def validate_file(path: Path, kind: str = "auto") -> list[str]:
             errors.append(
                 f"Row {line_no}: invalid date_reviewed (expected YYYY-MM-DD or ISO datetime): {date_reviewed}"
             )
-
-        if status == "approved" and relation not in RELATION_VALUES:
-            errors.append(f"Row {line_no}: approved rows require a valid relation")
 
         has_any_canonical = bool(canonical_term_iri or canonical_term_label or canonical_term_source)
         has_all_canonical = bool(canonical_term_iri and canonical_term_label and canonical_term_source)

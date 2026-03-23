@@ -39,7 +39,7 @@ Local queue:
 ## Allowed values
 - `alignment_id`:
   - local queue rows only: `CAND_0001`, `CAND_0002`, ...
-- `relation`: `exact|close|broad|narrow|related|owl:*|rdfs:*|skos:*` from the supported mapping set
+- `relation`: optional. When present, it must be `exact|close|broad|narrow|related|owl:*|rdfs:*|skos:*` from the supported mapping set
 - `status`: `needs_review|approved|rejected|deprecated`
 - `canonical_from`: `left|right|manual` (or empty before approval)
 - `curator`: `auto` or a valid ORCID
@@ -52,6 +52,7 @@ Local queue:
   - `canonical_term_label`
   - `canonical_term_source`
   - `canonical_term_kind`
+- `relation` is optional for approved rows. Use it only when you want to record an explicit semantic mapping in addition to the canonical replacement decision.
 - If `curator` is an ORCID, `curator_name` is required.
 - If `reviewer` is set, `reviewer_name` is required.
 - If `status` is `approved|rejected|deprecated`, `reviewer` must be present and must be a valid ORCID.
