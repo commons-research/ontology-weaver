@@ -17,7 +17,7 @@ from typing import Iterable
 import pandas as pd
 import streamlit as st
 
-from curation_app.config import ROOT_DIR
+from curation_app.config import DEFAULT_CURATORS_FILE, ROOT_DIR
 
 FINAL_REVIEW_STATUSES = {"approved"}
 ORCID_RECORD_API = "https://pub.orcid.org/v3.0"
@@ -294,6 +294,37 @@ def fetch_orcid_display_name(orcid: str) -> tuple[str, str]:
     if display_name:
         return display_name, ""
     return "", "No public name found for this ORCID."
+
+
+def read_curators() -> list[tuple[str, str]]:
+    """Return list of (orcid, name) pairs from the curators registry file."""
+    if not DEFAULT_CURATORS_FILE.is_file():
+        return []
+    try:
+        df = pd.read_csv(DEFAULT_CURATORS_FILE, sep="\t", dtype=str).fillna("")
+        if {"orcid", "name"}.issubset(df.columns):
+            return [(str(row["orcid"]).strip(), str(row["name"]).strip()) for _, row in df.iterrows() if str(row["orcid"]).strip()]
+    except Exception:
+        pass
+    return []
+
+
+def save_curator(orcid: str, name: str) -> None:
+    """Persist a curator (orcid, name) to the curators registry file if not already present."""
+    orcid = orcid.strip()
+    name = name.strip()
+    if not orcid:
+        return
+    existing = read_curators()
+    known_orcids = {o for o, _ in existing}
+    if orcid in known_orcids:
+        # Update name if it changed
+        rows = [(o, name if o == orcid else n) for o, n in existing]
+    else:
+        rows = existing + [(orcid, name)]
+    df = pd.DataFrame(rows, columns=["orcid", "name"])
+    DEFAULT_CURATORS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    df.to_csv(DEFAULT_CURATORS_FILE, sep="\t", index=False)
 
 
 def should_track_review_row(row: dict[str, object] | pd.Series) -> bool:
