@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 import json
 import re
+from urllib.error import HTTPError, URLError
 import urllib.request
 from difflib import SequenceMatcher
 from urllib.parse import quote, quote_plus, urlencode, urlparse
@@ -473,18 +474,20 @@ def _search_ols(
     timeout: float = 4.0,
     search_all: bool = False,
     mother_only: bool = True,
-) -> list[dict[str, str]]:
+) -> tuple[list[dict[str, str]], str]:
     q = query.strip()
     if not q:
-        return []
+        return [], ""
 
     by_key: dict[tuple[str, str], dict[str, str]] = {}
     query_norm = _normalize_label(q)
+    request_failures: list[str] = []
+    successful_responses = 0
     if search_all:
         request_specs = [("", max(25, min(200, rows * 10)))]
     else:
         if not ontologies:
-            return []
+            return [], ""
         request_specs = [(ontology, max(1, rows)) for ontology in ontologies]
 
     for ontology, row_limit in request_specs:
@@ -498,7 +501,16 @@ def _search_ols(
         try:
             with urllib.request.urlopen(url, timeout=timeout) as response:
                 payload = response.read().decode("utf-8", errors="replace")
-        except Exception:
+            successful_responses += 1
+        except HTTPError as exc:
+            request_failures.append(f"{ontology or 'all'}: HTTP {exc.code}")
+            continue
+        except URLError as exc:
+            reason = str(getattr(exc, "reason", exc) or "").strip() or exc.__class__.__name__
+            request_failures.append(f"{ontology or 'all'}: {reason}")
+            continue
+        except Exception as exc:
+            request_failures.append(f"{ontology or 'all'}: {exc.__class__.__name__}")
             continue
         try:
             parsed = json.loads(payload)
@@ -559,7 +571,13 @@ def _search_ols(
             row.get("label", ""),
         ),
     )
-    return ranked[:50]
+    if ranked:
+        return ranked[:50], ""
+    if successful_responses == 0 and request_failures:
+        if all("HTTP 503" in failure for failure in request_failures):
+            return [], "OLS search is currently unavailable (HTTP 503 from www.ebi.ac.uk)."
+        return [], "OLS search failed: " + "; ".join(request_failures[:3])
+    return [], ""
 
 
 def _infer_label_from_iri(iri: str) -> str:
@@ -645,15 +663,6 @@ def _normalize_kind(value: object) -> str:
     if kind in {"class", "property", "individual"}:
         return kind
     return ""
-
-
-def _self_canonical_relation(kind: object) -> str:
-    normalized = _normalize_kind(kind)
-    if normalized == "class":
-        return "owl:equivalentClass"
-    if normalized == "property":
-        return "owl:equivalentProperty"
-    return "owl:sameAs"
 
 
 def _derived_export_mapping_labels(relation: str, left_kind: object, right_kind: object) -> list[str]:
@@ -2094,7 +2103,7 @@ def render() -> None:
 
             search_col, clear_col = st.columns([1, 1])
             if search_col.button("Search ontology terms", key=f"search_manual_candidates_{left_term_key}"):
-                results = _search_ols(
+                results, search_error = _search_ols(
                     manual_search_query,
                     list(st.session_state.get(manual_selected_ontologies_key, [])),
                     left_label=left_label,
@@ -2110,7 +2119,9 @@ def render() -> None:
                     if st.session_state.get(manual_search_all_key, False)
                     else list(st.session_state.get(manual_selected_ontologies_key, []))
                 )
-                if not results:
+                if search_error:
+                    st.error(search_error)
+                elif not results:
                     st.warning("No OLS result found for this query/ontology selection.")
                 else:
                     st.success(f"Loaded {len(results)} candidate mapping term(s).")
@@ -2222,7 +2233,7 @@ def render() -> None:
                     new_row["canonical_term_label"] = left_label
                     new_row["canonical_term_source"] = left_source
                     new_row["canonical_term_kind"] = str(left_row_series.get("left_term_kind", "") or "")
-                    new_row["relation"] = _self_canonical_relation(left_row_series.get("left_term_kind", ""))
+                    new_row["relation"] = ""
                     new_row["suggestion_source"] = "manual_curated"
                     new_row["curator"] = "auto"
                     new_row["curator_name"] = ""
@@ -2244,7 +2255,7 @@ def render() -> None:
                             df.at[idx, "canonical_term_label"] = df.at[idx, "left_label"]
                             df.at[idx, "canonical_term_source"] = df.at[idx, "left_source"]
                             df.at[idx, "canonical_term_kind"] = df.at[idx, "left_term_kind"]
-                            df.at[idx, "relation"] = _self_canonical_relation(df.at[idx, "left_term_kind"])
+                            df.at[idx, "relation"] = ""
                             df.at[idx, "suggestion_source"] = "manual_curated"
                             log_entry = "Kept current source term; recorded source term as canonical."
                         else:
