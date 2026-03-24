@@ -55,6 +55,8 @@ REQUIRED_COLUMNS = [
     "canonical_term_kind",
     "reviewer",
     "reviewer_name",
+    "co_curators",
+    "co_curator_names",
     "curator_name",
     "date_reviewed",
     "logs",
@@ -160,6 +162,8 @@ STATE_KEPT_LEFT_TERMS = "curation_kept_left_terms"
 STATE_LEFT_TERM_INDEX = "curation_left_term_index"
 STATE_CURATOR = "active_curator"
 STATE_CURATOR_NAME = "active_curator_name"
+STATE_GROUP_MODE = "group_session_active"
+STATE_SESSION_CURATORS = "group_session_curators"  # list[tuple[str, str]] (orcid, name)
 STATE_REVIEW_SYNC_IRIS = "curation_review_sync_iris"
 
 
@@ -285,6 +289,16 @@ def _set_review_fields(df: pd.DataFrame, idx: int, reviewer: str) -> None:
         reviewer_name = str(st.session_state.get(STATE_CURATOR_NAME, "") or "").strip()
         df.at[idx, "reviewer_name"] = reviewer_name
     df.at[idx, "date_reviewed"] = utc_now_timestamp()
+    # Group session attribution
+    session_curators: list[tuple[str, str]] = st.session_state.get(STATE_SESSION_CURATORS, []) or []
+    if session_curators and len(session_curators) > 1:
+        co_orcids = "|".join(o for o, _ in session_curators)
+        co_names = ", ".join(n for _, n in session_curators)
+        df.at[idx, "co_curators"] = co_orcids
+        df.at[idx, "co_curator_names"] = co_names
+    else:
+        df.at[idx, "co_curators"] = ""
+        df.at[idx, "co_curator_names"] = ""
 
 
 def _apply_approve_left(df: pd.DataFrame, idx: int, reviewer: str, relation: str, logs: str) -> None:

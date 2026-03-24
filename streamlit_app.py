@@ -6,7 +6,7 @@ import streamlit as st
 
 from curation_app.auto_sync import STATE_SYNC_LAST_ERROR, auto_sync_sqlite
 from curation_app.context import enabled_source_ids, load_manifest, source_context, source_ids
-from curation_app.helpers import fetch_orcid_display_name, is_valid_orcid, normalize_orcid
+from curation_app.helpers import fetch_orcid_display_name, is_valid_orcid, normalize_orcid, read_curators, save_curator
 from curation_app.pages import (
     add_terms,
     curate_candidates,
@@ -24,6 +24,8 @@ STATE_SOURCE_ID = "active_source_id"
 STATE_CURATOR = "active_curator"
 STATE_CURATOR_INPUT = "active_curator_input"
 STATE_CURATOR_NAME = "active_curator_name"
+STATE_GROUP_MODE = "group_session_active"
+STATE_SESSION_CURATORS = "group_session_curators"  # list[tuple[str, str]] (orcid, name)
 STATE_PAGE = "active_page"
 
 
@@ -79,36 +81,95 @@ def main() -> None:
             help="Single source slug reused automatically across workflow steps.",
         )
         st.session_state[STATE_SOURCE_ID] = selected_source_id
-        curator_value = str(
-            st.session_state.get(STATE_CURATOR_INPUT, st.session_state.get(STATE_CURATOR, "")) or ""
-        ).strip()
-        curator_input = st.sidebar.text_input(
-            "Curator ORCID",
-            value=curator_value,
-            help="Enter a valid ORCID iD. The public name is fetched automatically from ORCID.",
+        _NEW_CURATOR_OPTION = "— Add new curator —"
+        known_curators = read_curators()
+        curator_options = [f"{name} ({orcid})" for orcid, name in known_curators] + [_NEW_CURATOR_OPTION]
+        active_curator = str(st.session_state.get(STATE_CURATOR, "") or "").strip()
+        # Determine the default selectbox index
+        _active_idx = next(
+            (i for i, (o, _) in enumerate(known_curators) if o == active_curator),
+            len(curator_options) - 1,
         )
-        st.sidebar.markdown("[Find your ORCID](https://orcid.org/orcid-search/search)")
-        st.session_state[STATE_CURATOR_INPUT] = curator_input.strip()
-        normalized_orcid = normalize_orcid(curator_input)
-        if curator_input.strip():
-            if is_valid_orcid(normalized_orcid):
-                st.session_state[STATE_CURATOR] = normalized_orcid
-                display_name, lookup_error = fetch_orcid_display_name(normalized_orcid)
-                st.sidebar.caption(f"Normalized ORCID: `{normalized_orcid}`")
-                if display_name:
-                    st.session_state[STATE_CURATOR_NAME] = display_name
-                    st.sidebar.caption(f"Resolved name: `{display_name}`")
-                elif lookup_error:
+        selected_curator_option = st.sidebar.selectbox(
+            "Active curator",
+            options=curator_options,
+            index=_active_idx,
+            help="Select an existing curator or add a new one by entering their ORCID.",
+        )
+        if selected_curator_option == _NEW_CURATOR_OPTION:
+            curator_input = st.sidebar.text_input(
+                "New curator ORCID",
+                value=str(st.session_state.get(STATE_CURATOR_INPUT, "") or "").strip(),
+                help="Enter a valid ORCID iD. The public name is fetched automatically from ORCID.",
+            )
+            st.sidebar.markdown("[Find your ORCID](https://orcid.org/orcid-search/search)")
+            st.session_state[STATE_CURATOR_INPUT] = curator_input.strip()
+            normalized_orcid = normalize_orcid(curator_input)
+            if curator_input.strip():
+                if is_valid_orcid(normalized_orcid):
+                    display_name, lookup_error = fetch_orcid_display_name(normalized_orcid)
+                    if display_name:
+                        save_curator(normalized_orcid, display_name)
+                        st.session_state[STATE_CURATOR] = normalized_orcid
+                        st.session_state[STATE_CURATOR_NAME] = display_name
+                        st.sidebar.caption(f"Added: `{display_name}` (`{normalized_orcid}`)")
+                        st.rerun()
+                    elif lookup_error:
+                        st.session_state[STATE_CURATOR] = ""
+                        st.session_state[STATE_CURATOR_NAME] = ""
+                        st.sidebar.warning(lookup_error)
+                else:
                     st.session_state[STATE_CURATOR] = ""
                     st.session_state[STATE_CURATOR_NAME] = ""
-                    st.sidebar.warning(lookup_error)
+                    st.sidebar.error("Enter a valid ORCID iD, for example `0000-0002-1825-0097`.")
             else:
                 st.session_state[STATE_CURATOR] = ""
                 st.session_state[STATE_CURATOR_NAME] = ""
-                st.sidebar.error("Enter a valid ORCID iD, for example `0000-0002-1825-0097`.")
         else:
-            st.session_state[STATE_CURATOR] = ""
-            st.session_state[STATE_CURATOR_NAME] = ""
+            # Resolve selected curator from known list
+            _sel_idx = curator_options.index(selected_curator_option)
+            sel_orcid, sel_name = known_curators[_sel_idx]
+            st.session_state[STATE_CURATOR] = sel_orcid
+            st.session_state[STATE_CURATOR_NAME] = sel_name
+            st.session_state[STATE_CURATOR_INPUT] = sel_orcid
+            st.sidebar.caption(f"ORCID: `{sel_orcid}`")
+            st.sidebar.caption(f"Name: `{sel_name}`")
+
+        # --- Group session mode ---
+        primary_orcid = str(st.session_state.get(STATE_CURATOR, "") or "").strip()
+        group_mode = st.sidebar.checkbox(
+            "Group session",
+            value=bool(st.session_state.get(STATE_GROUP_MODE, False)),
+            help="Enable when multiple curators are working together on a shared screen. All participants are credited.",
+            disabled=not primary_orcid,
+        )
+        st.session_state[STATE_GROUP_MODE] = group_mode
+        if group_mode and primary_orcid:
+            other_curators = [(o, n) for o, n in known_curators if o != primary_orcid]
+            if other_curators:
+                prev_co = {o for o, _ in st.session_state.get(STATE_SESSION_CURATORS, []) if o != primary_orcid}
+                default_co = [f"{n} ({o})" for o, n in other_curators if o in prev_co]
+                co_options = [f"{n} ({o})" for o, n in other_curators]
+                selected_co_labels = st.sidebar.multiselect(
+                    "Co-curators",
+                    options=co_options,
+                    default=[d for d in default_co if d in co_options],
+                    help="Select the other curators participating in this group session.",
+                )
+                co_map = {f"{n} ({o})": (o, n) for o, n in other_curators}
+                co_selected = [co_map[lbl] for lbl in selected_co_labels if lbl in co_map]
+                primary_name = str(st.session_state.get(STATE_CURATOR_NAME, "") or "").strip()
+                session_curators = [(primary_orcid, primary_name)] + co_selected
+                st.session_state[STATE_SESSION_CURATORS] = session_curators
+                if co_selected:
+                    names = ", ".join(n for _, n in session_curators)
+                    st.sidebar.caption(f"Session: {names}")
+            else:
+                st.sidebar.info("Add more curators via 'Add new curator' first.")
+                st.session_state[STATE_SESSION_CURATORS] = [(primary_orcid, str(st.session_state.get(STATE_CURATOR_NAME, "") or ""))]
+        else:
+            st.session_state[STATE_SESSION_CURATORS] = []
+
         ctx = source_context(selected_source_id, manifest_df)
         st.sidebar.caption(f"TTL: `{ctx.download_ttl.name}`")
         st.sidebar.caption(f"Terms: `{ctx.terms_tsv.name}`")
