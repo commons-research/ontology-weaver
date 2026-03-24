@@ -91,13 +91,27 @@ def _curator_progress_df() -> pd.DataFrame:
         if "reviewer" not in review_df.columns or iri_col not in review_df.columns:
             continue
         for _, row in review_df.iterrows():
-            reviewer = str(row.get("reviewer", "") or "").strip()
-            if not reviewer or reviewer == "auto":
-                continue
-            name = str(row.get("reviewer_name", "") or known_curators.get(reviewer, reviewer)).strip() or reviewer
-            key = (reviewer, name)
-            counts = curator_source_counts.setdefault(key, {})
-            counts[source_id] = counts.get(source_id, 0) + 1
+            # Collect all curators: primary reviewer + co_curators in group sessions
+            participants: list[tuple[str, str]] = []
+            co_orcids_raw = str(row.get("co_curators", "") or "").strip()
+            co_names_raw = str(row.get("co_curator_names", "") or "").strip()
+            if co_orcids_raw:
+                co_orcid_list = [o.strip() for o in co_orcids_raw.split("|") if o.strip()]
+                co_name_list = [n.strip() for n in co_names_raw.split(",")]
+                for i, o in enumerate(co_orcid_list):
+                    n = co_name_list[i] if i < len(co_name_list) else known_curators.get(o, o)
+                    participants.append((o, n or o))
+            else:
+                reviewer = str(row.get("reviewer", "") or "").strip()
+                if reviewer and reviewer != "auto":
+                    name = str(row.get("reviewer_name", "") or known_curators.get(reviewer, reviewer)).strip() or reviewer
+                    participants.append((reviewer, name))
+            for orcid, name in participants:
+                if not orcid or orcid == "auto":
+                    continue
+                key = (orcid, name)
+                counts = curator_source_counts.setdefault(key, {})
+                counts[source_id] = counts.get(source_id, 0) + 1
     if not curator_source_counts:
         return pd.DataFrame()
     rows = []

@@ -24,6 +24,8 @@ STATE_SOURCE_ID = "active_source_id"
 STATE_CURATOR = "active_curator"
 STATE_CURATOR_INPUT = "active_curator_input"
 STATE_CURATOR_NAME = "active_curator_name"
+STATE_GROUP_MODE = "group_session_active"
+STATE_SESSION_CURATORS = "group_session_curators"  # list[tuple[str, str]] (orcid, name)
 STATE_PAGE = "active_page"
 
 
@@ -132,6 +134,42 @@ def main() -> None:
             st.session_state[STATE_CURATOR_INPUT] = sel_orcid
             st.sidebar.caption(f"ORCID: `{sel_orcid}`")
             st.sidebar.caption(f"Name: `{sel_name}`")
+
+        # --- Group session mode ---
+        primary_orcid = str(st.session_state.get(STATE_CURATOR, "") or "").strip()
+        group_mode = st.sidebar.checkbox(
+            "Group session",
+            value=bool(st.session_state.get(STATE_GROUP_MODE, False)),
+            help="Enable when multiple curators are working together on a shared screen. All participants are credited.",
+            disabled=not primary_orcid,
+        )
+        st.session_state[STATE_GROUP_MODE] = group_mode
+        if group_mode and primary_orcid:
+            other_curators = [(o, n) for o, n in known_curators if o != primary_orcid]
+            if other_curators:
+                prev_co = {o for o, _ in st.session_state.get(STATE_SESSION_CURATORS, []) if o != primary_orcid}
+                default_co = [f"{n} ({o})" for o, n in other_curators if o in prev_co]
+                co_options = [f"{n} ({o})" for o, n in other_curators]
+                selected_co_labels = st.sidebar.multiselect(
+                    "Co-curators",
+                    options=co_options,
+                    default=[d for d in default_co if d in co_options],
+                    help="Select the other curators participating in this group session.",
+                )
+                co_map = {f"{n} ({o})": (o, n) for o, n in other_curators}
+                co_selected = [co_map[lbl] for lbl in selected_co_labels if lbl in co_map]
+                primary_name = str(st.session_state.get(STATE_CURATOR_NAME, "") or "").strip()
+                session_curators = [(primary_orcid, primary_name)] + co_selected
+                st.session_state[STATE_SESSION_CURATORS] = session_curators
+                if co_selected:
+                    names = ", ".join(n for _, n in session_curators)
+                    st.sidebar.caption(f"Session: {names}")
+            else:
+                st.sidebar.info("Add more curators via 'Add new curator' first.")
+                st.session_state[STATE_SESSION_CURATORS] = [(primary_orcid, str(st.session_state.get(STATE_CURATOR_NAME, "") or ""))]
+        else:
+            st.session_state[STATE_SESSION_CURATORS] = []
+
         ctx = source_context(selected_source_id, manifest_df)
         st.sidebar.caption(f"TTL: `{ctx.download_ttl.name}`")
         st.sidebar.caption(f"Terms: `{ctx.terms_tsv.name}`")

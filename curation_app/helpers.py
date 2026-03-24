@@ -38,6 +38,8 @@ LEDGER_COLUMNS = [
     "reviewer_name",
     "date_reviewed",
     "curation_comment",
+    "co_curators",
+    "co_curator_names",
 ]
 
 
@@ -375,6 +377,8 @@ def project_review_row(row: dict[str, object] | pd.Series) -> dict[str, str]:
         "reviewer_name": str((row.get("reviewer_name", "") if hasattr(row, "get") else "") or "").strip(),
         "date_reviewed": str((row.get("date_reviewed", "") if hasattr(row, "get") else "") or "").strip(),
         "curation_comment": str((row.get("curation_comment", "") if hasattr(row, "get") else "") or "").strip(),
+        "co_curators": str((row.get("co_curators", "") if hasattr(row, "get") else "") or "").strip(),
+        "co_curator_names": str((row.get("co_curator_names", "") if hasattr(row, "get") else "") or "").strip(),
     }
 
 
