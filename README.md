@@ -66,12 +66,20 @@ uv run streamlit run streamlit_app.py
 - Overview
 - Fetch schemas and ontologies - Download external sources + browse OLS catalog
 - Extract term TSV from TTL
-- Generate pairwise candidates (local/local or local/OLS)
+- Generate pairwise candidates (local/local, local/OLS, or local/Wikidata classes and properties)
 - Curate candidate decisions (quick actions + batch edits)
 - Review curated dataset and export TTL
 - View schema documentation (pyLODE), interactive graph, RDFGlance linkout, and Mermaid export before/after curation
 - Background sync - candidate TSVs are synced automatically to SQLite and reconciled exports
 - Inspect SQLite tables and run SQL queries
+
+### Wikidata alignment
+
+In **Alignment workflow → Generate candidates**, select a pivot schema such as EMI and choose **Wikidata** as the target. Extract its terms first. The app searches English Wikidata items (Q IDs) for schema classes and Wikidata properties (P IDs) for schema properties, ranks hits by label/alias similarity, and keeps up to five per term by default. Other term kinds are not searched. Adjust the top-N limit to inspect more candidates; low-scoring hits remain suggestions, not assertions. This uses the live Wikidata API and may take time for a full schema. Network failures leave the existing local queue unchanged.
+
+Candidates appear in the `registry/work/pair_alignment_candidates_<source>_wikidata.tsv` queue under their own alignment batch. Review descriptions and Wikidata entity pages, then choose an appropriate mapping relation (or keep the source term) in **Curate candidates** before validating. Wikidata Q items are not OWL classes; a lexical match does not justify `owl:equivalentClass`. Generation never approves matches or commits the queue to the shared ledger; only reviewed decisions are synced to `registry/pair_alignment_candidates_<source>_wikidata.tsv`.
+
+The sidebar **Alignment batch** controls the target shown in **Curate candidates**. For an EMI term such as `InChIKey`, select `emi_wikidata`; then either generate the full batch with the focus filter empty, or use **Find Wikidata matches for this term** beside an unmatched term. This on-demand lookup appends hits to the local queue without replacing other decisions. EMI's `InChIKey` is a class, so it searches Q items (for example [Q21445422](https://www.wikidata.org/wiki/Q21445422)); [P235](https://www.wikidata.org/wiki/Property:P235) is a Wikidata identifier property, not a same-kind class candidate. A newly added candidate still requires review.
 
 ## Ontology Terms Glossary
 
@@ -85,6 +93,7 @@ uv run streamlit run streamlit_app.py
 Keep these in Git:
 
 - `registry/external_sources.tsv`
+- `registry/alignment_batches.tsv`
 - `registry/pair_alignment_candidates_<source>.tsv`
 
 Each schema should have one TSV that contains:

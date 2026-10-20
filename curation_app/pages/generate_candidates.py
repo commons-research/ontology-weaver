@@ -210,11 +210,12 @@ def _upsert_batch_manifest(ctx: AlignmentBatchContext) -> None:
 def render() -> None:
     st.title("Generate Pairwise Candidates")
     st.caption(
-        "This module creates candidate matches between the pivot schema on the left and either a downloaded schema or OLS candidates on the right."
+        "Compare a pivot schema with a downloaded schema, OLS ontologies, or Wikidata. "
+        "Generated matches are suggestions for curation, not approved mappings."
     )
     st.markdown(
         "1. Select the pivot schema on the left.\n"
-        "2. Select the target as either a downloaded schema or OLS candidates.\n"
+        "2. Select a downloaded schema, OLS candidates, or Wikidata on the right.\n"
         "3. Set optional filters and click **Generate candidates**."
     )
 
@@ -244,19 +245,24 @@ def render() -> None:
     right_terms_path = None
     selected_ontologies: list[str] = []
     default_backend = active_ctx.target_backend if active_ctx else "ols"
-    if default_backend not in {"source", "ols"}:
+    if default_backend not in {"source", "ols", "wikidata"}:
         default_backend = "ols"
     if STATE_TARGET_BACKEND not in st.session_state:
         st.session_state[STATE_TARGET_BACKEND] = default_backend
+    backend_options = {
+        "Downloaded schema": "source",
+        "OLS candidates": "ols",
+        "Wikidata": "wikidata",
+    }
     with right_col:
         target_backend_label = st.radio(
             "Target type",
-            options=["Downloaded schema", "OLS candidates"],
-            index=0 if st.session_state[STATE_TARGET_BACKEND] == "source" else 1,
+            options=list(backend_options),
+            index=list(backend_options.values()).index(st.session_state[STATE_TARGET_BACKEND]),
             horizontal=True,
             key="generate_target_type",
         )
-    target_backend = "source" if target_backend_label == "Downloaded schema" else "ols"
+    target_backend = backend_options[target_backend_label]
     st.session_state[STATE_TARGET_BACKEND] = target_backend
 
     target_label = ""
@@ -284,6 +290,13 @@ def render() -> None:
         target_label = right_slug.upper()
         target_id = normalize_source_value(right_slug)
         description = f"{pivot_source.upper()} aligned against downloaded schema {right_slug.upper()}."
+    elif target_backend == "wikidata":
+        target_label = "Wikidata"
+        target_id = "wikidata"
+        description = f"{pivot_source.upper()} classes and properties aligned against Wikidata candidates."
+        with right_col:
+            st.caption("Classes search Wikidata items (Q IDs); properties search Wikidata properties (P IDs).")
+            st.caption("Results require manual scope and relation review.")
     else:
         ols_options, label_map, desc_map, url_map = _ols_catalog()
         active_ontologies = active_ctx.target_ids if active_ctx and active_ctx.target_backend == "ols" else ()
@@ -330,6 +343,7 @@ def render() -> None:
 
     st.caption("Curator is fixed to `auto` at generation time.")
     top_n_ols = 3
+    top_n_wikidata = 5
     fetch_metadata = True
     ols_rows = 5
     timeout = 3.0
@@ -372,6 +386,21 @@ def render() -> None:
                 step=0.5,
                 help="Network timeout per OLS API request.",
             )
+        elif ctx.target_backend == "wikidata":
+            top_n_wikidata = st.number_input(
+                "Top N Wikidata hits per term",
+                min_value=1,
+                max_value=50,
+                value=5,
+                step=1,
+                help="Keep up to this many ranked hits per class or property, including weaker hits for review.",
+            )
+            timeout = st.number_input(
+                "Wikidata request timeout (seconds)",
+                min_value=0.5,
+                value=10.0,
+                step=0.5,
+            )
 
     args = [
         "--left-terms",
@@ -403,6 +432,9 @@ def render() -> None:
         args.extend(["--request-timeout", str(timeout)])
         if fetch_metadata:
             args.append("--ols-fetch-metadata")
+    elif ctx.target_backend == "wikidata":
+        args.extend(["--use-wikidata-api", "--top-n-wikidata", str(top_n_wikidata)])
+        args.extend(["--request-timeout", str(timeout)])
     else:
         min_score = st.number_input(
             "Minimum score",
@@ -427,11 +459,11 @@ def render() -> None:
         if ctx.target_backend == "source" and right_terms_path is not None and not right_terms_path.is_file():
             st.error(f"Missing terms TSV for right source: `{to_relpath(right_terms_path)}`")
             return
-        _upsert_batch_manifest(ctx)
-        st.session_state[STATE_BATCH_ID] = ctx.batch_id
         result = _run_generate_with_progress(args)
         show_command_result(result)
         if result.returncode == 0:
+            _upsert_batch_manifest(ctx)
+            st.session_state[STATE_BATCH_ID] = ctx.batch_id
             queue_df = read_tsv(ctx.queue_tsv)
             if not queue_df.empty:
                 queue_df = stamp_batch_metadata(queue_df, ctx)

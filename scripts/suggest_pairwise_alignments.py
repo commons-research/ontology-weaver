@@ -6,6 +6,8 @@ Supported modes:
    Compare two local term TSV exports with fuzzy matching.
 2) local-vs-ols:
    Compare local terms to top OLS API suggestions.
+3) local-vs-wikidata:
+   Compare classes and properties to Wikidata items and properties.
 
 Output rows are written with ephemeral IDs (`CAND_XXXX`) and are intended for
 manual curation inside one per-schema TSV file.
@@ -28,6 +30,10 @@ from pathlib import Path
 from typing import Callable, Iterable
 
 OLS_API_SEARCH_URL = "https://www.ebi.ac.uk/ols4/api/search"
+WIKIDATA_API_SEARCH_URL = "https://www.wikidata.org/w/api.php"
+WIKIDATA_USER_AGENT = (
+    "OntologyWeaver/0.1 (https://github.com/commons-research/ontology-weaver; schema alignment review)"
+)
 DEFAULT_ONTOLOGIES = ["chebi", "obi", "ms", "chmo", "edam"]
 KIND_MISMATCH_SCORE_FACTOR = 0.75
 FINAL_STATUSES = {"approved", "rejected", "deprecated"}
@@ -63,6 +69,18 @@ class OlsSuggestion:
     example: str
     term_api_url: str
 
+@dataclass(frozen=True)
+class WikidataSuggestion:
+    """One Wikidata item or property found by entity search."""
+
+    iri: str
+    label: str
+    description: str
+    entity_kind: str
+    match_method: str
+    score: float
+
+
 
 @dataclass(frozen=True)
 class PairSuggestion:
@@ -94,6 +112,7 @@ class Config:
     right_terms: Path | None
     right_source: str
     use_ols_api: bool
+    use_wikidata_api: bool
     curated_alignments: Path
     output: Path
     min_score: float
@@ -103,6 +122,7 @@ class Config:
     ols_fetch_metadata: bool
     request_timeout: float
     top_n_ols: int
+    top_n_wikidata: int
     max_left_terms: int
     curator: str
     include_existing_curated: bool
@@ -134,6 +154,11 @@ def parse_args() -> Config:
         "--use-ols-api",
         action="store_true",
         help="Use OLS API as right side for local-vs-ols mode",
+    )
+    mode_group.add_argument(
+        "--use-wikidata-api",
+        action="store_true",
+        help="Search Wikidata items for classes and Wikidata properties for properties",
     )
 
     parser.add_argument(
@@ -187,13 +212,19 @@ def parse_args() -> Config:
         "--request-timeout",
         type=float,
         default=3.0,
-        help="Per-request timeout in seconds for OLS API calls (default: 3.0)",
+        help="Per-request timeout in seconds for API calls (default: 3.0)",
     )
     parser.add_argument(
         "--top-n-ols",
         type=int,
         default=1,
         help="Number of top OLS hits to keep per left term in local-vs-OLS mode",
+    )
+    parser.add_argument(
+        "--top-n-wikidata",
+        type=int,
+        default=5,
+        help="Number of ranked Wikidata hits to keep per left class/property",
     )
     parser.add_argument(
         "--max-left-terms",
@@ -223,6 +254,8 @@ def parse_args() -> Config:
         raise SystemExit("--request-timeout must be > 0")
     if args.top_n_ols <= 0:
         raise SystemExit("--top-n-ols must be > 0")
+    if args.top_n_wikidata <= 0:
+        raise SystemExit("--top-n-wikidata must be > 0")
     if args.max_left_terms < 0:
         raise SystemExit("--max-left-terms must be >= 0")
 
@@ -239,6 +272,7 @@ def parse_args() -> Config:
         right_terms=args.right_terms,
         right_source=args.right_source.strip(),
         use_ols_api=bool(args.use_ols_api),
+        use_wikidata_api=bool(args.use_wikidata_api),
         curated_alignments=args.curated_alignments,
         output=args.output,
         min_score=args.min_score,
@@ -248,6 +282,7 @@ def parse_args() -> Config:
         ols_fetch_metadata=bool(args.ols_fetch_metadata),
         request_timeout=args.request_timeout,
         top_n_ols=args.top_n_ols,
+        top_n_wikidata=args.top_n_wikidata,
         max_left_terms=args.max_left_terms,
         curator=args.curator.strip(),
         include_existing_curated=bool(args.include_existing_curated),
@@ -609,6 +644,156 @@ def build_local_ols_candidates(
         if progress_cb:
             progress_cb(idx, total_left, "local-vs-ols")
 
+    return candidates
+
+
+def query_wikidata_suggestions(
+    left: Term, top_n: int, request_timeout: float
+) -> list[WikidataSuggestion]:
+    """Find and lexically rank English Wikidata entities of the matching kind."""
+    entity_type = "item" if left.term_kind == "class" else "property"
+    id_pattern = r"Q[1-9]\d*" if entity_type == "item" else r"P[1-9]\d*"
+    by_iri: dict[str, WikidataSuggestion] = {}
+    offset = 0
+    while True:
+        params = urllib.parse.urlencode(
+            {
+                "action": "wbsearchentities",
+                "search": left.label,
+                "language": "en",
+                "type": entity_type,
+                "format": "json",
+                "limit": min(50, max(20, top_n - len(by_iri))),
+                "continue": offset,
+            }
+        )
+        request = urllib.request.Request(
+            f"{WIKIDATA_API_SEARCH_URL}?{params}",
+            headers={"User-Agent": WIKIDATA_USER_AGENT},
+        )
+        try:
+            with urllib.request.urlopen(request, timeout=request_timeout) as response:
+                payload = json.load(response)
+        except (OSError, ValueError) as exc:
+            raise RuntimeError(f"search for {left.label!r} failed: {exc}") from exc
+        if not isinstance(payload, dict):
+            raise RuntimeError(f"invalid Wikidata search response for {left.label!r}: {payload!r}")
+        if "error" in payload:
+            error = payload["error"]
+            detail = (
+                f"{error.get('code', 'unknown')}: {error.get('info', '')}"
+                if isinstance(error, dict) else str(error)
+            )
+            raise RuntimeError(f"Wikidata search error for {left.label!r}: {detail}")
+        if not isinstance(payload.get("search"), list):
+            raise RuntimeError(f"invalid Wikidata search response for {left.label!r}: {payload!r}")
+
+        for hit in payload["search"]:
+            if not isinstance(hit, dict):
+                continue
+            entity_id = hit.get("id")
+            label = hit.get("label")
+            if not isinstance(entity_id, str) or not re.fullmatch(id_pattern, entity_id):
+                continue
+            if not isinstance(label, str) or not label.strip():
+                continue
+            label = label.strip()
+            names = [(label, False)]
+            match = hit.get("match")
+            if (
+                isinstance(match, dict)
+                and match.get("type") == "alias"
+                and match.get("language", "en") == "en"
+                and isinstance(match.get("text"), str)
+            ):
+                names.append((match["text"], True))
+            aliases = hit.get("aliases", [])
+            if isinstance(aliases, list):
+                for alias in aliases:
+                    if isinstance(alias, str):
+                        names.append((alias, True))
+                    elif (
+                        isinstance(alias, dict)
+                        and alias.get("language", "en") == "en"
+                        and isinstance(alias.get("value"), str)
+                    ):
+                        names.append((alias["value"], True))
+            scored_names = []
+            for name, alias in names:
+                normalized = normalize_label(name)
+                method, score = local_match(
+                    left,
+                    replace(left, normalized_label=normalized, token_set=tokenize(normalized)),
+                )
+                scored_names.append((method, score, alias))
+            method, score, alias_match = max(scored_names, key=lambda scored: scored[1])
+            candidate = WikidataSuggestion(
+                iri=f"http://www.wikidata.org/entity/{entity_id}",
+                label=label,
+                description=hit.get("description", "")
+                if isinstance(hit.get("description"), str) else "",
+                entity_kind=left.term_kind,
+                match_method=f"wikidata_{'alias_' if alias_match else ''}{method}",
+                score=score,
+            )
+            previous = by_iri.get(candidate.iri)
+            if previous is None or candidate.score > previous.score:
+                by_iri[candidate.iri] = candidate
+
+        next_offset = payload.get("search-continue")
+        if len(by_iri) >= top_n or not isinstance(next_offset, int):
+            break
+        if next_offset <= offset:
+            raise RuntimeError(f"invalid Wikidata search continuation for {left.label!r}")
+        offset = next_offset
+    return sorted(by_iri.values(), key=lambda item: item.score, reverse=True)[:top_n]
+
+
+def build_local_wikidata_candidates(
+    left_terms: Iterable[Term],
+    focus: str,
+    top_n_wikidata: int,
+    request_timeout: float,
+    progress_cb: Callable[[int, int, str], None] | None = None,
+) -> list[PairSuggestion]:
+    """Build review-only candidates for schema classes and properties."""
+    candidates: list[PairSuggestion] = []
+    left_list = list(left_terms)
+    for idx, left in enumerate(left_list, start=1):
+        if not focus or focus in left.normalized_label:
+            if left.term_kind not in {"class", "property"}:
+                print(
+                    f"Skipping {left.iri}: unsupported term kind {left.term_kind or '(unknown)'}",
+                    file=sys.stderr,
+                    flush=True,
+                )
+            else:
+                hits = query_wikidata_suggestions(left, top_n_wikidata, request_timeout)
+                for rank, hit in enumerate(hits, start=1):
+                    candidates.append(
+                        PairSuggestion(
+                            left=left,
+                            right_source="WIKIDATA",
+                            right_term_kind=hit.entity_kind,
+                            right_term_iri=hit.iri,
+                            right_label=hit.label,
+                            right_definition=hit.description,
+                            right_comment="",
+                            right_example="",
+                            ols_term_api_url="",
+                            normalized_right_label=normalize_label(hit.label),
+                            match_method=hit.match_method,
+                            match_score=hit.score,
+                            relation="",
+                            suggestion_source="wikidata_api",
+                            notes=(
+                                f"Wikidata search result (rank {rank}/{len(hits)}); "
+                                "conceptual schema mapping only; review meaning and relation before approval"
+                            ),
+                        )
+                    )
+        if progress_cb:
+            progress_cb(idx, len(left_list), "local-vs-wikidata")
     return candidates
 
 
@@ -1009,7 +1194,19 @@ def main() -> int:
         # Machine-readable format for Streamlit UI progress parsing.
         print(f"PROGRESS\t{current}\t{total}\t{phase}", flush=True)
 
-    if config.use_ols_api:
+    if config.use_wikidata_api:
+        try:
+            suggestions = build_local_wikidata_candidates(
+                left_terms=left_terms,
+                focus=config.focus,
+                top_n_wikidata=config.top_n_wikidata,
+                request_timeout=config.request_timeout,
+                progress_cb=emit_progress,
+            )
+        except RuntimeError as exc:
+            raise SystemExit(f"Wikidata API failure; output left untouched: {exc}") from exc
+        resolved_right_source = "wikidata"
+    elif config.use_ols_api:
         if not probe_ols_api(config.ontologies, config.request_timeout):
             suggestions = []
             print(
@@ -1068,6 +1265,8 @@ def main() -> int:
     if not config.include_existing_curated:
         duplicate_source = config.curated_alignments or config.output
         curated_keys = load_preserved_pair_keys(duplicate_source)
+        if config.use_wikidata_api and config.curated_alignments:
+            curated_keys.update(load_preserved_pair_keys(config.output))
         suggestions, excluded_existing = filter_existing_curated_pairs(
             suggestions=suggestions,
             left_source=config.left_source,

@@ -16,7 +16,7 @@ from rdflib import Graph, URIRef
 from rdflib.namespace import OWL, RDF, RDFS, SKOS
 
 from curation_app.config import DEFAULT_OLS_ONTOLOGIES_FILE
-from curation_app.context import active_alignment_context, stamp_batch_metadata, stamp_batch_record
+from curation_app.context import AlignmentBatchContext, active_alignment_context, stamp_batch_metadata, stamp_batch_record
 from curation_app.helpers import (
     dataframe_to_tsv_bytes,
     normalize_source_value,
@@ -29,6 +29,7 @@ from curation_app.helpers import (
     utc_now_timestamp,
     write_tsv,
 )
+from scripts.suggest_pairwise_alignments import build_local_wikidata_candidates, load_terms
 
 
 REQUIRED_COLUMNS = [
@@ -165,6 +166,7 @@ STATE_MTIME = "curation_mtime"
 STATE_SELECTED_ALIGNMENT = "curation_selected_alignment_id"
 STATE_KEPT_LEFT_TERMS = "curation_kept_left_terms"
 STATE_LEFT_TERM_INDEX = "curation_left_term_index"
+STATE_RETURN_TO_LEFT_IRI = "curation_return_to_left_iri"
 STATE_CURATOR = "active_curator"
 STATE_CURATOR_NAME = "active_curator_name"
 STATE_GROUP_MODE = "group_session_active"
@@ -625,6 +627,66 @@ def _next_alignment_id(df: pd.DataFrame) -> str:
             continue
         max_id = max(max_id, int(match.group(1)))
     return f"CAND_{max_id + 1:04d}"
+
+
+def _add_wikidata_term_candidates(
+    df: pd.DataFrame, ctx: AlignmentBatchContext, left_iri: str, *, top_n: int = 5
+) -> tuple[pd.DataFrame, int]:
+    """Append review-only Wikidata hits for one extracted term without replacing other queue rows."""
+    left = next((term for term in load_terms(ctx.terms_tsv) if term.iri == left_iri), None)
+    if left is None or left.term_kind not in {"class", "property"}:
+        return df, 0
+
+    suggestions = build_local_wikidata_candidates(
+        [left], focus="", top_n_wikidata=top_n, request_timeout=10.0
+    )
+    out = _ensure_columns(df)
+    for column in (
+        "match_method", "match_score", "normalized_left_label",
+        "normalized_right_label", "notes", "date_added",
+    ):
+        if column not in out.columns:
+            out[column] = ""
+    existing_iris = set(out.loc[out["left_term_iri"] == left_iri, "right_term_iri"].astype(str))
+    next_id = int(_next_alignment_id(out)[5:])
+    rows = []
+    for suggestion in suggestions:
+        if suggestion.right_term_iri in existing_iris:
+            continue
+        row = stamp_batch_record({col: "" for col in out.columns}, ctx)
+        row.update({
+            "alignment_id": f"CAND_{next_id:04d}",
+            "left_source": ctx.pivot_source.upper(),
+            "left_term_iri": left.iri,
+            "left_label": left.label,
+            "left_term_kind": left.term_kind,
+            "left_definition": left.definition,
+            "left_comment": left.comment,
+            "left_example": left.example,
+            "right_source": "WIKIDATA",
+            "right_term_iri": suggestion.right_term_iri,
+            "right_label": suggestion.right_label,
+            "right_term_kind": suggestion.right_term_kind,
+            "right_definition": suggestion.right_definition,
+            "normalized_left_label": left.normalized_label,
+            "normalized_right_label": suggestion.normalized_right_label,
+            "match_method": suggestion.match_method,
+            "match_score": f"{suggestion.match_score:.2f}",
+            "suggestion_source": "wikidata_api",
+            "status": "needs_review",
+            "curator": "auto",
+            "date_added": utc_now_timestamp(),
+            "notes": suggestion.notes,
+            "logs": suggestion.notes,
+            "ols_search_url": _ols_search_url(left.label),
+            "bioportal_search_url": _bioportal_search_url(left.label),
+        })
+        rows.append(row)
+        existing_iris.add(suggestion.right_term_iri)
+        next_id += 1
+    if rows:
+        out = pd.concat([out, pd.DataFrame(rows, columns=out.columns)], ignore_index=True)
+    return out, len(rows)
 
 
 def _normalize_label(text: str) -> str:
@@ -1880,6 +1942,12 @@ def render() -> None:
             st.session_state[STATE_LEFT_TERM_INDEX] = 0
         left_idx = int(st.session_state.get(STATE_LEFT_TERM_INDEX, 0))
         left_idx = max(0, min(left_idx, len(left_keys) - 1))
+        return_to_iri = st.session_state.pop(STATE_RETURN_TO_LEFT_IRI, "")
+        if return_to_iri:
+            left_idx = next(
+                (idx for idx, (_, iri, _) in enumerate(left_keys) if iri == return_to_iri),
+                left_idx,
+            )
         selected_left = st.selectbox(
             "Left term",
             options=left_keys,
@@ -2032,6 +2100,33 @@ def render() -> None:
             st.markdown("**Matched terms**")
             if group_df.empty:
                 st.info("No right-side candidates found for this left term yet.")
+                if (
+                    ctx.target_backend == "wikidata"
+                    and str(left_row_series.get("left_term_kind", "")).lower() in {"class", "property"}
+                ):
+                    st.caption(
+                        "Wikidata matches appear after generation. Search this term now, or run "
+                        "Generate candidates with an empty focus filter for the full schema."
+                    )
+                    if st.button("Find Wikidata matches for this term", key=f"wikidata_lookup_{left_term_key}"):
+                        try:
+                            updated, added = _add_wikidata_term_candidates(df, ctx, left_iri)
+                        except RuntimeError as exc:
+                            st.error(f"Wikidata search failed; queue unchanged: {exc}")
+                        else:
+                            if added:
+                                write_tsv(updated, queue_file)
+                                st.session_state[STATE_DF] = updated
+                                st.session_state[STATE_MTIME] = _file_mtime(queue_file)
+                                st.session_state[STATE_RETURN_TO_LEFT_IRI] = left_iri
+                                st.rerun()
+                            else:
+                                st.warning("No new Wikidata candidates found for this term.")
+                elif ctx.target_backend != "wikidata":
+                    st.caption(
+                        f"Active target: {ctx.target_label}. Select the Wikidata batch in the "
+                        "sidebar and generate candidates to see Wikidata matches."
+                    )
             else:
                 for _, right_row in group_df.iterrows():
                     current_alignment_id = str(right_row["alignment_id"])
